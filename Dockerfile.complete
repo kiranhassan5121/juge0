@@ -145,7 +145,7 @@ RUN apt-get update && \
     rm -rf /var/lib/apt/lists/*
 
 # ----------------------------------------------------------------------------
-# SWIFT 6.0
+# SWIFT 5.8 - Use Ubuntu 18.04 build for Debian 10 compatibility
 # ----------------------------------------------------------------------------
 RUN apt-get update && \
     apt-get install -y \
@@ -153,23 +153,20 @@ RUN apt-get update && \
         libc6-dev \
         libcurl4-openssl-dev \
         libedit2 \
-        libgcc-11-dev \
         libpython3-dev \
         libsqlite3-0 \
-        libstdc++-11-dev \
         libxml2-dev \
-        libz3-dev \
         pkg-config \
         zlib1g-dev && \
-    curl -sL "https://download.swift.org/swift-6.0.3-release/ubuntu2204/swift-6.0.3-RELEASE/swift-6.0.3-RELEASE-ubuntu22.04.tar.gz" \
+    curl -sL "https://download.swift.org/swift-5.8.1-release/ubuntu1804/swift-5.8.1-RELEASE/swift-5.8.1-RELEASE-ubuntu18.04.tar.gz" \
     | tar -xz -C /usr/local && \
-    mv /usr/local/swift-6.0.3-RELEASE-ubuntu22.04 /usr/local/swift-6.0 && \
-    mkdir -p /usr/local/swift-6.0-version/bin && \
-    ln -sf /usr/local/swift-6.0/usr/bin/swift /usr/local/swift-6.0-version/bin/swift && \
-    ln -sf /usr/local/swift-6.0/usr/bin/swiftc /usr/local/swift-6.0-version/bin/swiftc && \
+    mv /usr/local/swift-5.8.1-RELEASE-ubuntu18.04 /usr/local/swift-5.8 && \
+    mkdir -p /usr/local/swift-5.8-version/bin && \
+    ln -sf /usr/local/swift-5.8/usr/bin/swift /usr/local/swift-5.8-version/bin/swift && \
+    ln -sf /usr/local/swift-5.8/usr/bin/swiftc /usr/local/swift-5.8-version/bin/swiftc && \
     rm -rf /var/lib/apt/lists/*
 
-ENV PATH="/usr/local/swift-6.0/usr/bin:$PATH"
+ENV PATH="/usr/local/swift-5.8/usr/bin:$PATH"
 
 # Clean up
 RUN apt-get clean && rm -rf /var/lib/apt/lists/* /tmp/* /var/tmp/*
@@ -180,7 +177,8 @@ RUN java -version && \
     node --version && \
     dotnet --version && \
     go version && \
-    /usr/local/php-8.3/bin/php --version
+    /usr/local/php-8.3/bin/php --version && \
+    swift --version
 
 # Back to the default non-root user for runtime.
 USER judge0
