@@ -1,45 +1,69 @@
-# Judge0 Custom Deployment Instructions
+# Judge0 Setup Instructions
 
-This package contains the production configuration for your custom Judge0 instance.
+This package contains everything you need to run Judge0 with upgraded compilers.
 
-## **Prerequisites**
-- **Docker Desktop** (for Windows/Mac) or **Docker Engine** (for Linux) must be installed.
+## What You Need
 
-## **Installation Steps (Local or Server)**
+- Docker Desktop (Windows/Mac) or Docker Engine (Linux)
 
-1. **Extract the files**
-   Unzip this folder to a location on your machine.
+## Installation
 
-2. **Start the Service**
-   Open a terminal (Command Prompt, PowerShell, or Bash) in the extracted folder and run:
+1. Extract this folder to any location on your machine
+
+2. Open a terminal in this folder and run:
    ```bash
    docker-compose up -d
    ```
-   *This will automatically pull the custom image (`ghcr.io/umerfarok/juge0:v4`) which includes Java 21, Python 3.12, Node 22, PHP 8.3, Swift 5.8, and more.*
 
-3. **Verify Installation**
-   Check if the services are running:
+3. Wait about 30 seconds for everything to start, then check:
    ```bash
    docker-compose ps
    ```
+   All services should show "Up"
 
-4. **Access the API**
-   The API will be available at:
-   `http://localhost:2358`
+4. Open your browser to http://localhost:2358/docs
 
-## **Configuration**
-- The main configuration file is `judge0.conf`.
-- If you need to change passwords or resource limits, edit `judge0.conf` and restart the services:
-  ```bash
-  docker-compose restart
-  ```
+## What's Included
 
-## **Included Compilers**
-- **Java 21** (LTS)
-- **Python 3.12**
-- **Node.js 22**
-- **.NET 8.0**
-- **Go 1.23**
-- **PHP 8.3**
-- **Swift 5.8**
-- **C/C++ (GCC)**
+Upgraded compiler versions:
+- Java 21 (was OpenJDK 13)
+- Python 3.12 (was 3.8)
+- Node.js 22 (was 12)
+- PHP 8.3 (was 7.4)
+- Swift 5.8 (was 5.2)
+- Plus all standard Judge0 languages
+
+## Configuration
+
+Edit `judge0.conf` if you need to change:
+- Database password
+- Redis password
+- Resource limits
+- Time limits
+
+After editing, restart:
+```bash
+docker-compose restart
+```
+
+## Stopping
+
+```bash
+docker-compose down
+```
+
+## Troubleshooting
+
+**Services won't start?**
+- Make sure Docker is running
+- Check ports 2358 isn't already in use
+
+**Can't access API?**
+- Wait 30-60 seconds after starting
+- Check logs: `docker-compose logs -f server`
+
+**Need to reset everything?**
+```bash
+docker-compose down -v
+docker-compose up -d
+```
