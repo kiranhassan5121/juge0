@@ -59,16 +59,16 @@
     name: "C (GCC 11.5.0)",
     is_archived: false,
     source_file: "main.c",
-    compile_cmd: "/usr/bin/gcc %s main.c",
+    compile_cmd: "/usr/local/gcc-9.2.0/bin/gcc %s main.c",
     run_cmd: "./a.out"
   },
   {
     id: 51,
-    name: "C# (.NET 8.0)",
+    name: "C# (Mono 6.6.0.161)",
     is_archived: false,
     source_file: "Main.cs",
-    compile_cmd: "mkdir -p /tmp/.dotnet && touch /tmp/.dotnet/8.0.404.dotnetFirstUseSentinel && /usr/bin/dotnet build -c Release /tmp/csharp-project/csharp-project.csproj -o /tmp/csharp-output",
-    run_cmd: "/usr/bin/dotnet /tmp/csharp-output/csharp-project.dll"
+    compile_cmd: "/usr/local/mono-6.6.0.161/bin/mcs %s Main.cs",
+    run_cmd: "/usr/local/mono-6.6.0.161/bin/mono Main.exe"
   },
   {
     id: 52,
@@ -91,8 +91,8 @@
     name: "C++ (GCC 11.5.0)",
     is_archived: false,
     source_file: "main.cpp",
-    compile_cmd: "/usr/bin/g++ %s main.cpp",
-    run_cmd: "./a.out"
+    compile_cmd: "/usr/local/gcc-9.2.0/bin/g++ %s main.cpp",
+    run_cmd: "LD_LIBRARY_PATH=/usr/local/gcc-9.2.0/lib64 ./a.out"
   },
   {
     id: 55,
@@ -136,7 +136,7 @@
     name: "Go (1.23.4)",
     is_archived: false,
     source_file: "main.go",
-    compile_cmd: "GOCACHE=/tmp/.cache/go-build /usr/local/go/bin/go build %s main.go",
+    compile_cmd: "GOCACHE=/tmp/.cache/go-build /usr/local/go-1.23/bin/go build %s main.go",
     run_cmd: "./main"
   },
   {
@@ -152,15 +152,15 @@
     name: "Java (OpenJDK 21.0.5)",
     is_archived: false,
     source_file: "Main.java",
-    compile_cmd: "/usr/bin/javac %s Main.java",
-    run_cmd: "/usr/bin/java Main"
+    compile_cmd: "/usr/local/openjdk-21/bin/javac %s Main.java",
+    run_cmd: "/usr/local/openjdk-21/bin/java Main"
   },
   {
     id: 63,
-    name: "JavaScript (Node.js 22.12.0)",
+    name: "JavaScript (Node.js 22.21.0)",
     is_archived: false,
     source_file: "script.js",
-    run_cmd: "/usr/bin/node script.js"
+    run_cmd: "/usr/local/node-22/bin/node script.js"
   },
   {
     id: 64,
@@ -198,7 +198,7 @@
     name: "PHP (8.3.15)",
     is_archived: false,
     source_file: "script.php",
-    run_cmd: "/usr/local/bin/php script.php"
+    run_cmd: "/usr/local/php-8.3/bin/php script.php"
   },
   {
     id: 69,
@@ -220,14 +220,14 @@
     name: "Python (3.12.8)",
     is_archived: false,
     source_file: "script.py",
-    run_cmd: "/usr/bin/python3 script.py"
+    run_cmd: "/usr/local/python-3.12/bin/python3.12 script.py"
   },
   {
     id: 72,
-    name: "Ruby (3.0.7)",
+    name: "Ruby (2.7.0)",
     is_archived: false,
     source_file: "script.rb",
-    run_cmd: "/usr/bin/ruby script.rb"
+    run_cmd: "/usr/local/ruby-2.7.0/bin/ruby script.rb"
   },
   {
     id: 73,
@@ -242,8 +242,8 @@
     name: "TypeScript (5.7.2)",
     is_archived: false,
     source_file: "script.ts",
-    compile_cmd: "/usr/bin/tsc %s script.ts",
-    run_cmd: "/usr/bin/node script.js"
+    compile_cmd: "/usr/local/node-22/bin/tsc %s script.ts",
+    run_cmd: "/usr/local/node-22/bin/node script.js"
   },
   {
     id: 75,
@@ -274,8 +274,8 @@
     name: "Kotlin (2.0.21)",
     is_archived: false,
     source_file: "Main.kt",
-    compile_cmd: "/usr/local/bin/kotlinc %s Main.kt",
-    run_cmd: "/usr/local/bin/kotlin MainKt"
+    compile_cmd: "/usr/local/kotlin-2.0/bin/kotlinc %s Main.kt",
+    run_cmd: "/usr/local/kotlin-2.0/bin/kotlin MainKt"
   },
   {
     id: 79,
@@ -312,7 +312,7 @@
     name: "Swift (5.8.1)",
     is_archived: false,
     source_file: "Main.swift",
-    compile_cmd: "/usr/bin/swiftc %s Main.swift",
+    compile_cmd: "/usr/local/swift-5.8/usr/bin/swiftc %s Main.swift",
     run_cmd: "./Main"
   },
   {
