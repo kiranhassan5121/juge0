@@ -9,7 +9,7 @@
 
 services:
   server:
-    image: ghcr.io/umerfarok/juge0:v2
+    image: ghcr.io/umerfarok/juge0:v3
     volumes:
       - ./judge0.conf:/judge0.conf:ro
     ports:
@@ -23,7 +23,7 @@ services:
       - workers
 
   workers:
-    image: ghcr.io/umerfarok/juge0:v2
+    image: ghcr.io/umerfarok/juge0:v3
     command: ["./scripts/workers"]
     volumes:
       - ./judge0.conf:/judge0.conf:ro

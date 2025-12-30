@@ -48,7 +48,8 @@ jobs:
         with:
           images: ${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}
           tags: |
-            type=raw,value=v2
+            type=raw,value=v3
+            type=raw,value=latest
 
       - name: Build and push Docker image
         uses: docker/build-push-action@v5

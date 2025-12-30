@@ -187,5 +187,8 @@ RUN java -version && \
     /usr/local/php-8.3/bin/php --version && \
     swift --version
 
+# Update language definitions with new compiler versions
+COPY languages-config/active.rb /api/db/languages/active.rb
+
 # Back to the default non-root user for runtime.
 USER judge0
