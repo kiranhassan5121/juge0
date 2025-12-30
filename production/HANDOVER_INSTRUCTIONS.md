@@ -15,7 +15,7 @@ This package contains the production configuration for your custom Judge0 instan
    ```bash
    docker-compose up -d
    ```
-   *This will automatically pull the custom image (`ghcr.io/umerfarok/juge0:v3`) which includes Java 21, Python 3.12, Node 22, .NET 8, etc.*
+   *This will automatically pull the custom image (`ghcr.io/umerfarok/juge0:v4`) which includes Java 21, Python 3.12, Node 22, PHP 8.3, Swift 5.8, and more.*
 
 3. **Verify Installation**
    Check if the services are running:

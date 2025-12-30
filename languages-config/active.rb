@@ -136,7 +136,7 @@
     name: "Go (1.23.4)",
     is_archived: false,
     source_file: "main.go",
-    compile_cmd: "GOCACHE=/tmp/.cache/go-build /usr/local/go-1.23/bin/go build %s main.go",
+    compile_cmd: "GOCACHE=/tmp/.cache/go-build /usr/local/go/bin/go build %s main.go",
     run_cmd: "./main"
   },
   {
@@ -242,7 +242,7 @@
     name: "TypeScript (5.7.2)",
     is_archived: false,
     source_file: "script.ts",
-    compile_cmd: "/usr/local/node-22/bin/tsc %s script.ts",
+    compile_cmd: "/usr/bin/tsc %s script.ts",
     run_cmd: "/usr/local/node-22/bin/node script.js"
   },
   {
