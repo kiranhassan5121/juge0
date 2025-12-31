@@ -1,66 +1,65 @@
-# Judge0 Language Configuration - Latest Available Versions
-# Last Updated: December 31, 2025
-# 10 languages - using verified existing versions
+# Judge0 Language Configuration - Working Versions
+# Using actually existing and tested versions
 
 [
-  # C (GCC 14.2)
+  # C (using existing GCC from base image)
   {
     id: 50,
-    name: "C (GCC 14.2.0)",
+    name: "C (GCC 9.2.0)",
     is_archived: false,
     source_file: "main.c",
-    compile_cmd: "/usr/local/gcc-14/bin/gcc %s -lm",
-    run_cmd: "LD_LIBRARY_PATH=/usr/local/gcc-14/lib64 ./a.out"
+    compile_cmd: "/usr/bin/gcc %s -lm",
+    run_cmd: "./a.out"
   },
 
-  # C++ (GCC 14.2)
+  # C++ (using existing GCC from base image)
   {
     id: 54,
-    name: "C++ (GCC 14.2.0)",
+    name: "C++ (GCC 9.2.0)",
     is_archived: false,
     source_file: "main.cpp",
-    compile_cmd: "/usr/local/gcc-14/bin/g++ %s -lm",
-    run_cmd: "LD_LIBRARY_PATH=/usr/local/gcc-14/lib64 ./a.out"
+    compile_cmd: "/usr/bin/g++ %s -lm",
+    run_cmd: "./a.out"
   },
 
-  # Java 23
+  # Java 21 LTS
   {
     id: 62,
-    name: "Java (OpenJDK 23)",
+    name: "Java (OpenJDK 21 LTS)",
     is_archived: false,
     source_file: "Main.java",
-    compile_cmd: "/usr/local/openjdk-23/bin/javac %s",
-    run_cmd: "/usr/local/openjdk-23/bin/java Main"
+    compile_cmd: "/usr/local/openjdk-21/bin/javac %s",
+    run_cmd: "/usr/local/openjdk-21/bin/java Main"
   },
 
-  # Python 3.13
+  # Python 3.12
   {
     id: 71,
-    name: "Python (3.13.1)",
+    name: "Python (3.12.8)",
     is_archived: false,
     source_file: "script.py",
     compile_cmd: nil,
-    run_cmd: "/usr/local/python-3.13/bin/python3.13 %s"
+    run_cmd: "/usr/local/python-3.12/bin/python3.12 %s"
   },
 
-  # Node.js 23
+  # Node.js 22 LTS
   {
     id: 63,
-    name: "JavaScript (Node.js 23.5.0)",
+    name: "JavaScript (Node.js 22.12.0 LTS)",
     is_archived: false,
     source_file: "script.js",
     compile_cmd: nil,
     run_cmd: "/usr/local/bin/node %s"
   },
 
-  # PHP 8.4
+  # PHP 8.3
   {
     id: 68,
-    name: "PHP (8.4.2)",
+    name: "PHP (8.3.15)",
     is_archived: false,
     source_file: "script.php",
     compile_cmd: nil,
-    run_cmd: "/usr/local/php-8.4/bin/php %s"
+    run_cmd: "/usr/local/php-8.3/bin/php %s"
   },
 
   # Go 1.23
@@ -80,7 +79,7 @@
     is_archived: false,
     source_file: "Main.kt",
     compile_cmd: "/usr/local/kotlin-2.1/bin/kotlinc %s -include-runtime -d Main.jar",
-    run_cmd: "/usr/local/openjdk-23/bin/java -jar Main.jar"
+    run_cmd: "/usr/local/openjdk-21/bin/java -jar Main.jar"
   },
 
   # Rust 1.83
