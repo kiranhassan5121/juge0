@@ -88,7 +88,7 @@
     name: "Rust (1.83.0)",
     is_archived: false,
     source_file: "main.rs",
-    compile_cmd: "/root/.cargo/bin/rustc %s",
+    compile_cmd: "/usr/local/cargo/bin/rustc %s",
     run_cmd: "./main"
   },
 
@@ -99,6 +99,6 @@
     is_archived: false,
     source_file: "script.rb",
     compile_cmd: nil,
-    run_cmd: "/usr/local/ruby-3.3/bin/ruby %s"
+    run_cmd: "/usr/local/ruby-3.3/bin/ruby3.3 %s"
   }
 ]

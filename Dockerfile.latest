@@ -1,4 +1,4 @@
-# Judge0 v6 - Simplified with Working Downloads
+# Judge0 v6.1 - Fixed Ruby and Rust Issues
 FROM judge0/judge0:1.13.1
 
 USER root
@@ -11,10 +11,10 @@ RUN echo "deb http://archive.debian.org/debian/ buster main" > /etc/apt/sources.
 # Install tools
 RUN apt-get update && apt-get install -y wget unzip curl && rm -rf /var/lib/apt/lists/*
 
-# Remove old GCC (client requirement)
+# Remove old GCC (client requirement) - DON'T touch Ruby 2.7!
 RUN rm -rf /usr/local/gcc-7.4.0 /usr/local/gcc-8.3.0 /usr/local/gcc-9.2.0
 
-# Java 21 LTS (most stable, widely available)
+# Java 21 LTS
 RUN mkdir -p /usr/local/openjdk-21 && \
     cd /tmp && \
     wget https://download.oracle.com/java/21/latest/jdk-21_linux-x64_bin.tar.gz && \
@@ -24,13 +24,13 @@ RUN mkdir -p /usr/local/openjdk-21 && \
 ENV JAVA_HOME=/usr/local/openjdk-21
 ENV PATH="$JAVA_HOME/bin:$PATH"
 
-# Node.js 22 LTS (more stable than 23)
+# Node.js 22 LTS
 RUN cd /tmp && \
     wget https://nodejs.org/dist/v22.12.0/node-v22.12.0-linux-x64.tar.xz && \
     tar -xJf node-v22.12.0-linux-x64.tar.xz -C /usr/local --strip-components=1 && \
     rm node-v22.12.0-linux-x64.tar.xz
 
-# Go 1.23 (https://go.dev/dl/)
+# Go 1.23
 RUN cd /tmp && \
     wget https://go.dev/dl/go1.23.4.linux-amd64.tar.gz && \
     tar -C /usr/local -xzf go1.23.4.linux-amd64.tar.gz && \
@@ -39,7 +39,7 @@ RUN cd /tmp && \
 
 ENV PATH="/usr/local/go-1.23/bin:$PATH"
 
-# Python 3.12 (3.13 may not be widely available yet)
+# Python 3.12
 RUN cd /tmp && \
     wget https://www.python.org/ftp/python/3.12.8/Python-3.12.8.tar.xz && \
     tar -xf Python-3.12.8.tar.xz && \
@@ -49,7 +49,7 @@ RUN cd /tmp && \
     make install && \
     cd /tmp && rm -rf Python-3.12.8*
 
-# PHP 8.3 (8.4 very new, may have issues)
+# PHP 8.3
 RUN cd /tmp && \
     wget https://www.php.net/distributions/php-8.3.15.tar.xz && \
     tar -xf php-8.3.15.tar.xz && \
@@ -68,30 +68,33 @@ RUN cd /tmp && \
 
 ENV PATH="/usr/local/kotlin-2.1/bin:$PATH"
 
-# Rust 1.83
-RUN curl --proto '=https' --tlsv1.2 -sSf https://sh.rustup.rs | sh -s -- -y --default-toolchain 1.83.0
+# Rust 1.83 - Install system-wide so judge0 user can access it
+RUN curl --proto '=https' --tlsv1.2 -sSf https://sh.rustup.rs | sh -s -- -y --default-toolchain 1.83.0 --profile minimal --no-modify-path && \
+    cp -r /root/.cargo /usr/local/cargo && \
+    chown -R judge0:judge0 /usr/local/cargo && \
+    chmod -R 755 /usr/local/cargo
 
-ENV PATH="/root/.cargo/bin:$PATH"
+ENV PATH="/usr/local/cargo/bin:$PATH"
 
-# Ruby 3.3
+# Ruby 3.3.6 - Add as NEW installation (keep existing Ruby 2.7 for Judge0 server!)
 RUN cd /tmp && \
     wget https://cache.ruby-lang.org/pub/ruby/3.3/ruby-3.3.6.tar.xz && \
     tar -xf ruby-3.3.6.tar.xz && \
     cd ruby-3.3.6 && \
-    ./configure --prefix=/usr/local/ruby-3.3 && \
+    ./configure --prefix=/usr/local/ruby-3.3 --program-suffix=3.3 && \
     make -j$(nproc) && \
     make install && \
     cd /tmp && rm -rf ruby-3.3.6*
 
-ENV PATH="/usr/local/ruby-3.3/bin:$PATH"
-
 # Copy language config
 COPY languages-config/active-latest.rb /api/db/languages/active.rb
 
-# Verify
+# Verify installations
 RUN java -version && node --version && go version && \
     /usr/local/python-3.12/bin/python3.12 --version && \
     /usr/local/php-8.3/bin/php --version && \
-    kotlinc -version && rustc --version && ruby --version
+    kotlinc -version && /usr/local/cargo/bin/rustc --version && \
+    /usr/local/ruby-3.3/bin/ruby3.3 --version && \
+    echo "Ruby 2.7 (for Judge0 server):" && ruby --version
 
 USER judge0
