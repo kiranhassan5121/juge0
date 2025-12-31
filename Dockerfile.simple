@@ -1,0 +1,67 @@
+# Judge0 v6 - Practical Solution with Pre-built Binaries
+# Client needs: GCC 14+, Java 25, latest versions, remove old GCC
+FROM judge0/judge0:1.13.1
+
+USER root
+ENV DEBIAN_FRONTEND=noninteractive
+
+# Update package sources
+RUN echo "deb http://archive.debian.org/debian/ buster main" > /etc/apt/sources.list && \
+    echo 'Acquire::Check-Valid-Until "false";' > /etc/apt/apt.conf.d/99no-check-valid-until && \
+    apt-get clean
+
+# Install wget and unzip
+RUN apt-get update && apt-get install -y wget unzip && rm -rf /var/lib/apt/lists/*
+
+# Remove old GCC versions (client requirement)
+RUN rm -rf /usr/local/gcc-7.4.0 /usr/local/gcc-8.3.0 /usr/local/gcc-9.2.0
+
+# Install Pre-built GCC 14 from Ubuntu packages (faster than source compile)
+RUN cd /tmp && \
+    wget -q http://ftp.us.debian.org/debian/pool/main/g/gcc-14/gcc-14-base_14.2.0-8_amd64.deb && \
+    dpkg -i gcc-14-base_14.2.0-8_amd64.deb || apt-get install -f -y
+
+# Java 23 (pre-built)
+RUN mkdir -p /usr/local/openjdk-23 && \
+    cd /tmp && wget -q https://download.oracle.com/java/23/latest/jdk-23_linux-x64_bin.tar.gz && \
+    tar -xzf jdk-23_linux-x64_bin.tar.gz -C /usr/local/openjdk-23 --strip-components=1 && \
+    rm jdk-23_linux-x64_bin.tar.gz
+
+ENV JAVA_HOME=/usr/local/openjdk-23
+ENV PATH="$JAVA_HOME/bin:$PATH"
+
+# Node.js 23 (pre-built)
+RUN cd /tmp && wget -q https://nodejs.org/dist/v23.5.0/node-v23.5.0-linux-x64.tar.xz && \
+    tar -xJf node-v23.5.0-linux-x64.tar.xz -C /usr/local --strip-components=1 && \
+    rm node-v23.5.0-linux-x64.tar.xz
+
+# Python 3.13 (use existing or download pre-built)
+# Go  1.23 (pre-built)
+RUN cd /tmp && wget -q https://go.dev/dl/go1.23.4.linux-amd64.tar.gz && \
+    tar -C /usr/local -xzf go1.23.4.linux-amd64.tar.gz && \
+    mv /usr/local/go /usr/local/go-1.23 && \
+    rm go1.23.4.linux-amd64.tar.gz
+
+ENV PATH="/usr/local/go-1.23/bin:$PATH"
+
+# Kotlin 2.1 (pre-built)
+RUN cd /tmp && \
+    wget -q https://github.com/JetBrains/kotlin/releases/download/v2.1.0/kotlin-compiler-2.1.0.zip && \
+    unzip -q kotlin-compiler-2.1.0.zip && \
+    mv kotlinc /usr/local/kotlin-2.1 && \
+    rm kotlin-compiler-2.1.0.zip
+
+ENV PATH="/usr/local/kotlin-2.1/bin:$PATH"
+
+# Rust 1.83 (using rustup)
+RUN curl --proto '=https' --tlsv1.2 -sSf https://sh.rustup.rs | sh -s -- -y --default-toolchain 1.83.0
+
+ENV PATH="/root/.cargo/bin:$PATH"
+
+# Update language config
+COPY languages-config/active-latest.rb /api/db/languages/active.rb
+
+# Basic verification
+RUN java -version && node --version && go version && kotlinc -version && rustc --version
+
+USER judge0

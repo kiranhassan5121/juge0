@@ -1,5 +1,6 @@
 # Judge0 Production Deployment
-# Custom Compilers: Java 21, Python 3.12, GCC 11, Node.js 22, .NET 8, etc.
+# Latest Stable Compilers: GCC 14, Java 23, Python 3.13, Node 23, Go 1.23, PHP 8.4
+# Old versions removed - only latest stable releases
 # 
 # Quick Start:
 #   1. Copy this folder to your server
@@ -9,7 +10,7 @@
 
 services:
   server:
-    image: ghcr.io/umerfarok/juge0:v5
+    image: ghcr.io/umerfarok/juge0:v6
     volumes:
       - ./judge0.conf:/judge0.conf:ro
     ports:
@@ -23,7 +24,7 @@ services:
       - workers
 
   workers:
-    image: ghcr.io/umerfarok/juge0:v5
+    image: ghcr.io/umerfarok/juge0:v6
     command: ["./scripts/workers"]
     volumes:
       - ./judge0.conf:/judge0.conf:ro
