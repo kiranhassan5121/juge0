@@ -71,10 +71,13 @@ ENV PATH="/usr/local/kotlin-2.1/bin:$PATH"
 # Rust 1.83 - Install system-wide so judge0 user can access it
 RUN curl --proto '=https' --tlsv1.2 -sSf https://sh.rustup.rs | sh -s -- -y --default-toolchain 1.83.0 --profile minimal --no-modify-path && \
     cp -r /root/.cargo /usr/local/cargo && \
-    chown -R judge0:judge0 /usr/local/cargo && \
-    chmod -R 755 /usr/local/cargo
+    cp -r /root/.rustup /usr/local/rustup && \
+    chown -R judge0:judge0 /usr/local/cargo /usr/local/rustup && \
+    chmod -R 755 /usr/local/cargo /usr/local/rustup
 
 ENV PATH="/usr/local/cargo/bin:$PATH"
+ENV RUSTUP_HOME="/usr/local/rustup"
+ENV CARGO_HOME="/usr/local/cargo"
 
 # Ruby 3.3.6 - Add as NEW installation (keep existing Ruby 2.7 for Judge0 server!)
 RUN cd /tmp && \
