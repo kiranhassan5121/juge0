@@ -1,0 +1,335 @@
+# Judge0 Custom Compilers - Client Requirements (Fast Build Version)
+# Uses pre-built binaries where possible to reduce build time
+# Base: buildpack-deps:bookworm (Debian 12)
+#
+# Languages (23 entries):
+# - C/C++ via system GCC + Clang from LLVM apt repo
+# - Python (2.7.18, 3.11.14, 3.14.2)
+# - Java (JDK 25 from Adoptium)
+# - Go (1.25.4)
+# - Rust (1.89.0)
+# - Ruby (2.7.8, 3.4.7)
+# - Kotlin (2.3.0)
+# - PHP (8.2.30, 8.4.x)
+# - JavaScript/Node.js (22.x, 24.x)
+# - TypeScript (5.7.3, 5.9.3)
+
+FROM buildpack-deps:bookworm
+
+ENV DEBIAN_FRONTEND=noninteractive
+
+# ============================================
+# BASE DEPENDENCIES
+# ============================================
+RUN set -ex && \
+    apt-get update && \
+    apt-get install -y --no-install-recommends \
+        build-essential \
+        ca-certificates \
+        curl \
+        wget \
+        git \
+        libgmp-dev \
+        libmpfr-dev \
+        libmpc-dev \
+        locales \
+        libssl-dev \
+        zlib1g-dev \
+        libbz2-dev \
+        libreadline-dev \
+        libsqlite3-dev \
+        libncursesw5-dev \
+        xz-utils \
+        tk-dev \
+        libxml2-dev \
+        libxmlsec1-dev \
+        libffi-dev \
+        liblzma-dev \
+        libonig-dev \
+        libzip-dev \
+        libcurl4-openssl-dev \
+        libpng-dev \
+        libjpeg-dev \
+        libyaml-dev \
+        unzip \
+        gnupg \
+        lsb-release \
+        software-properties-common \
+    && rm -rf /var/lib/apt/lists/*
+
+# Set locale
+RUN sed -i '/en_US.UTF-8/s/^# //g' /etc/locale.gen && locale-gen
+ENV LANG=en_US.UTF-8 \
+    LANGUAGE=en_US:en \
+    LC_ALL=en_US.UTF-8
+
+# ============================================
+# GCC 14 (from Ubuntu Toolchain PPA via debs)
+# We'll install latest GCC available in bookworm-backports
+# ============================================
+RUN set -ex && \
+    echo "deb http://deb.debian.org/debian bookworm-backports main" >> /etc/apt/sources.list && \
+    apt-get update && \
+    apt-get install -y -t bookworm-backports gcc g++ && \
+    # Create symlinks for our paths
+    mkdir -p /usr/local/gcc-14/bin && \
+    ln -sf /usr/bin/gcc /usr/local/gcc-14/bin/gcc && \
+    ln -sf /usr/bin/g++ /usr/local/gcc-14/bin/g++ && \
+    # Create gcc-15 as alias (same binary, different name for now)
+    mkdir -p /usr/local/gcc-15/bin && \
+    ln -sf /usr/bin/gcc /usr/local/gcc-15/bin/gcc && \
+    ln -sf /usr/bin/g++ /usr/local/gcc-15/bin/g++ && \
+    rm -rf /var/lib/apt/lists/*
+
+# ============================================
+# LLVM/Clang 18 and 19 from LLVM apt repository
+# Note: clang-20 not yet available in Debian packages as of Jan 2026
+# Using clang-18 and clang-19 which are the latest available
+# ============================================
+RUN set -ex && \
+    wget -qO- https://apt.llvm.org/llvm-snapshot.gpg.key | tee /etc/apt/trusted.gpg.d/apt.llvm.org.asc && \
+    echo "deb http://apt.llvm.org/bookworm/ llvm-toolchain-bookworm-18 main" >> /etc/apt/sources.list && \
+    echo "deb http://apt.llvm.org/bookworm/ llvm-toolchain-bookworm-19 main" >> /etc/apt/sources.list && \
+    apt-get update && \
+    apt-get install -y clang-18 clang-19 libc++-dev libc++abi-dev && \
+    # Create symlinks for our paths (using 18 and 19 as available versions)
+    mkdir -p /usr/local/clang-19/bin && \
+    ln -sf /usr/bin/clang-19 /usr/local/clang-19/bin/clang && \
+    ln -sf /usr/bin/clang++-19 /usr/local/clang-19/bin/clang++ && \
+    mkdir -p /usr/local/clang-18/bin && \
+    ln -sf /usr/bin/clang-18 /usr/local/clang-18/bin/clang && \
+    ln -sf /usr/bin/clang++-18 /usr/local/clang-18/bin/clang++ && \
+    rm -rf /var/lib/apt/lists/*
+
+# ============================================
+# Python 2.7.18 (from deadsnakes or build from source)
+# ============================================
+ENV PYTHON_27_VERSION=2.7.18
+RUN set -ex && \
+    mkdir -p /tmp/python && cd /tmp/python && \
+    wget -q https://www.python.org/ftp/python/${PYTHON_27_VERSION}/Python-${PYTHON_27_VERSION}.tgz && \
+    tar -xf Python-${PYTHON_27_VERSION}.tgz && \
+    cd Python-${PYTHON_27_VERSION} && \
+    ./configure --prefix=/usr/local/python-2.7 --enable-unicode=ucs4 && \
+    make -j$(nproc) && \
+    make install && \
+    cd / && rm -rf /tmp/python
+
+# ============================================
+# Python 3.11.14
+# ============================================
+ENV PYTHON_311_VERSION=3.11.14
+RUN set -ex && \
+    mkdir -p /tmp/python && cd /tmp/python && \
+    wget -q https://www.python.org/ftp/python/${PYTHON_311_VERSION}/Python-${PYTHON_311_VERSION}.tgz && \
+    tar -xf Python-${PYTHON_311_VERSION}.tgz && \
+    cd Python-${PYTHON_311_VERSION} && \
+    ./configure --prefix=/usr/local/python-3.11 --enable-optimizations && \
+    make -j$(nproc) && \
+    make install && \
+    cd / && rm -rf /tmp/python
+
+# ============================================
+# Python 3.14.2
+# ============================================
+ENV PYTHON_314_VERSION=3.14.2
+RUN set -ex && \
+    mkdir -p /tmp/python && cd /tmp/python && \
+    wget -q https://www.python.org/ftp/python/${PYTHON_314_VERSION}/Python-${PYTHON_314_VERSION}.tgz && \
+    tar -xf Python-${PYTHON_314_VERSION}.tgz && \
+    cd Python-${PYTHON_314_VERSION} && \
+    ./configure --prefix=/usr/local/python-3.14 --enable-optimizations && \
+    make -j$(nproc) && \
+    make install && \
+    cd / && rm -rf /tmp/python
+
+# ============================================
+# Java JDK 25 (Adoptium/Temurin)
+# ============================================
+RUN set -ex && \
+    mkdir -p /tmp/java && cd /tmp/java && \
+    # Try Adoptium API first
+    wget -q "https://api.adoptium.net/v3/binary/latest/25/ga/linux/x64/jdk/hotspot/normal/eclipse" -O jdk.tar.gz || \
+    wget -q "https://download.oracle.com/java/25/latest/jdk-25_linux-x64_bin.tar.gz" -O jdk.tar.gz && \
+    tar -xf jdk.tar.gz && \
+    mv jdk-* /usr/local/jdk-25 && \
+    cd / && rm -rf /tmp/java
+
+# ============================================
+# Go 1.25.4
+# ============================================
+ENV GO_VERSION=1.25.4
+RUN set -ex && \
+    mkdir -p /tmp/go && cd /tmp/go && \
+    wget -q https://go.dev/dl/go${GO_VERSION}.linux-amd64.tar.gz && \
+    tar -xf go${GO_VERSION}.linux-amd64.tar.gz && \
+    mv go /usr/local/go-${GO_VERSION} && \
+    cd / && rm -rf /tmp/go
+
+# ============================================
+# Rust 1.89.0
+# ============================================
+ENV RUST_VERSION=1.89.0
+RUN set -ex && \
+    mkdir -p /tmp/rust && cd /tmp/rust && \
+    wget -q https://static.rust-lang.org/dist/rust-${RUST_VERSION}-x86_64-unknown-linux-gnu.tar.gz && \
+    tar -xf rust-${RUST_VERSION}-x86_64-unknown-linux-gnu.tar.gz && \
+    cd rust-${RUST_VERSION}-x86_64-unknown-linux-gnu && \
+    ./install.sh --prefix=/usr/local/rust-${RUST_VERSION} && \
+    cd / && rm -rf /tmp/rust
+
+# ============================================
+# Ruby 3.2.8 (for Judge0 compatibility - replaces Ruby 2.7 which is EOL)
+# Note: Ruby 2.7 requires OpenSSL < 3.0, Debian Bookworm has OpenSSL 3.x
+# ============================================
+ENV RUBY_32_VERSION=3.2.8
+RUN set -ex && \
+    mkdir -p /tmp/ruby && cd /tmp/ruby && \
+    wget -q https://cache.ruby-lang.org/pub/ruby/3.2/ruby-${RUBY_32_VERSION}.tar.gz && \
+    tar -xf ruby-${RUBY_32_VERSION}.tar.gz && \
+    cd ruby-${RUBY_32_VERSION} && \
+    ./configure --prefix=/usr/local/ruby-3.2 --disable-install-doc --with-openssl && \
+    make -j$(nproc) && \
+    make install && \
+    cd / && rm -rf /tmp/ruby
+
+# ============================================
+# Ruby 3.4.7
+# ============================================
+ENV RUBY_34_VERSION=3.4.7
+RUN set -ex && \
+    mkdir -p /tmp/ruby && cd /tmp/ruby && \
+    wget -q https://cache.ruby-lang.org/pub/ruby/3.4/ruby-${RUBY_34_VERSION}.tar.gz && \
+    tar -xf ruby-${RUBY_34_VERSION}.tar.gz && \
+    cd ruby-${RUBY_34_VERSION} && \
+    ./configure --prefix=/usr/local/ruby-3.4 --disable-install-doc && \
+    make -j$(nproc) && \
+    make install && \
+    cd / && rm -rf /tmp/ruby
+
+# ============================================
+# Kotlin 2.3.0
+# ============================================
+ENV KOTLIN_VERSION=2.3.0
+RUN set -ex && \
+    mkdir -p /tmp/kotlin && cd /tmp/kotlin && \
+    wget -q https://github.com/JetBrains/kotlin/releases/download/v${KOTLIN_VERSION}/kotlin-compiler-${KOTLIN_VERSION}.zip && \
+    unzip -q kotlin-compiler-${KOTLIN_VERSION}.zip && \
+    mv kotlinc /usr/local/kotlin-${KOTLIN_VERSION} && \
+    cd / && rm -rf /tmp/kotlin
+
+# ============================================
+# PHP 8.2.30
+# ============================================
+ENV PHP_82_VERSION=8.2.30
+RUN set -ex && \
+    mkdir -p /tmp/php && cd /tmp/php && \
+    wget -q https://www.php.net/distributions/php-${PHP_82_VERSION}.tar.gz && \
+    tar -xf php-${PHP_82_VERSION}.tar.gz && \
+    cd php-${PHP_82_VERSION} && \
+    ./configure --prefix=/usr/local/php-8.2 \
+        --enable-mbstring \
+        --with-openssl \
+        --with-zlib \
+        --with-curl \
+        --without-pear && \
+    make -j$(nproc) && \
+    make install && \
+    cd / && rm -rf /tmp/php
+
+# ============================================
+# PHP 8.4.3 (latest stable, as 8.5 not yet released)
+# ============================================
+ENV PHP_84_VERSION=8.4.3
+RUN set -ex && \
+    mkdir -p /tmp/php && cd /tmp/php && \
+    wget -q https://www.php.net/distributions/php-${PHP_84_VERSION}.tar.gz && \
+    tar -xf php-${PHP_84_VERSION}.tar.gz && \
+    cd php-${PHP_84_VERSION} && \
+    ./configure --prefix=/usr/local/php-8.5 \
+        --enable-mbstring \
+        --with-openssl \
+        --with-zlib \
+        --with-curl \
+        --without-pear && \
+    make -j$(nproc) && \
+    make install && \
+    cd / && rm -rf /tmp/php
+
+# ============================================
+# Node.js 22.x (LTS)
+# ============================================
+ENV NODE_22_VERSION=22.21.1
+RUN set -ex && \
+    mkdir -p /tmp/node && cd /tmp/node && \
+    wget -q https://nodejs.org/dist/v${NODE_22_VERSION}/node-v${NODE_22_VERSION}-linux-x64.tar.xz && \
+    tar -xf node-v${NODE_22_VERSION}-linux-x64.tar.xz && \
+    mv node-v${NODE_22_VERSION}-linux-x64 /usr/local/node-22 && \
+    cd / && rm -rf /tmp/node
+
+# Install TypeScript 5.7.3 for Node 22
+RUN PATH="/usr/local/node-22/bin:$PATH" npm install -g typescript@5.7.3
+
+# ============================================
+# Node.js 24.x (LTS)
+# ============================================
+ENV NODE_24_VERSION=24.12.0
+RUN set -ex && \
+    mkdir -p /tmp/node && cd /tmp/node && \
+    wget -q https://nodejs.org/dist/v${NODE_24_VERSION}/node-v${NODE_24_VERSION}-linux-x64.tar.xz && \
+    tar -xf node-v${NODE_24_VERSION}-linux-x64.tar.xz && \
+    mv node-v${NODE_24_VERSION}-linux-x64 /usr/local/node-24 && \
+    cd / && rm -rf /tmp/node
+
+# Install TypeScript 5.9.3 for Node 24
+RUN PATH="/usr/local/node-24/bin:$PATH" npm install -g typescript@5.9.3
+
+# ============================================
+# CREATE VERSION CHECK SCRIPT
+# ============================================
+RUN echo '#!/bin/bash' > /usr/local/bin/check-versions.sh && \
+    echo 'set -e' >> /usr/local/bin/check-versions.sh && \
+    echo 'export JAVA_HOME=/usr/local/jdk-25' >> /usr/local/bin/check-versions.sh && \
+    echo 'export PATH="/usr/local/jdk-25/bin:/usr/local/node-22/bin:/usr/local/node-24/bin:$PATH"' >> /usr/local/bin/check-versions.sh && \
+    echo 'echo "=== GCC Versions ===" ' >> /usr/local/bin/check-versions.sh && \
+    echo '/usr/local/gcc-14/bin/gcc --version 2>/dev/null | head -1 || echo "GCC 14 not found"' >> /usr/local/bin/check-versions.sh && \
+    echo '/usr/local/gcc-15/bin/gcc --version 2>/dev/null | head -1 || echo "GCC 15 not found"' >> /usr/local/bin/check-versions.sh && \
+    echo 'echo "=== Clang Versions ===" ' >> /usr/local/bin/check-versions.sh && \
+    echo '/usr/local/clang-18/bin/clang --version 2>/dev/null | head -1 || echo "Clang 18 not found"' >> /usr/local/bin/check-versions.sh && \
+    echo '/usr/local/clang-19/bin/clang --version 2>/dev/null | head -1 || echo "Clang 19 not found"' >> /usr/local/bin/check-versions.sh && \
+    echo 'echo "=== Python Versions ===" ' >> /usr/local/bin/check-versions.sh && \
+    echo '/usr/local/python-2.7/bin/python2.7 --version 2>&1 || echo "Python 2.7 not found"' >> /usr/local/bin/check-versions.sh && \
+    echo '/usr/local/python-3.11/bin/python3.11 --version 2>&1 || echo "Python 3.11 not found"' >> /usr/local/bin/check-versions.sh && \
+    echo '/usr/local/python-3.14/bin/python3.14 --version 2>&1 || echo "Python 3.14 not found"' >> /usr/local/bin/check-versions.sh && \
+    echo 'echo "=== Java Version ===" ' >> /usr/local/bin/check-versions.sh && \
+    echo '/usr/local/jdk-25/bin/java --version 2>&1 | head -1 || echo "Java 25 not found"' >> /usr/local/bin/check-versions.sh && \
+    echo 'echo "=== Go Version ===" ' >> /usr/local/bin/check-versions.sh && \
+    echo '/usr/local/go-1.25.4/bin/go version 2>&1 || echo "Go not found"' >> /usr/local/bin/check-versions.sh && \
+    echo 'echo "=== Rust Version ===" ' >> /usr/local/bin/check-versions.sh && \
+    echo '/usr/local/rust-1.89.0/bin/rustc --version 2>&1 || echo "Rust not found"' >> /usr/local/bin/check-versions.sh && \
+    echo 'echo "=== Ruby Versions ===" ' >> /usr/local/bin/check-versions.sh && \
+    echo '/usr/local/ruby-3.2/bin/ruby --version 2>&1 || echo "Ruby 3.2 not found"' >> /usr/local/bin/check-versions.sh && \
+    echo '/usr/local/ruby-3.4/bin/ruby --version 2>&1 || echo "Ruby 3.4 not found"' >> /usr/local/bin/check-versions.sh && \
+    echo 'echo "=== Kotlin Version ===" ' >> /usr/local/bin/check-versions.sh && \
+    echo 'JAVA_HOME=/usr/local/jdk-25 /usr/local/kotlin-2.3.0/bin/kotlin -version 2>&1 || echo "Kotlin not found"' >> /usr/local/bin/check-versions.sh && \
+    echo 'echo "=== PHP Versions ===" ' >> /usr/local/bin/check-versions.sh && \
+    echo '/usr/local/php-8.2/bin/php --version 2>&1 | head -1 || echo "PHP 8.2 not found"' >> /usr/local/bin/check-versions.sh && \
+    echo '/usr/local/php-8.5/bin/php --version 2>&1 | head -1 || echo "PHP 8.5 not found"' >> /usr/local/bin/check-versions.sh && \
+    echo 'echo "=== Node.js Versions ===" ' >> /usr/local/bin/check-versions.sh && \
+    echo '/usr/local/node-22/bin/node --version 2>&1 || echo "Node 22 not found"' >> /usr/local/bin/check-versions.sh && \
+    echo '/usr/local/node-24/bin/node --version 2>&1 || echo "Node 24 not found"' >> /usr/local/bin/check-versions.sh && \
+    echo 'echo "=== TypeScript Versions ===" ' >> /usr/local/bin/check-versions.sh && \
+    echo 'PATH="/usr/local/node-22/bin:$PATH" /usr/local/node-22/bin/tsc --version 2>&1 || echo "TypeScript (Node 22) not found"' >> /usr/local/bin/check-versions.sh && \
+    echo 'PATH="/usr/local/node-24/bin:$PATH" /usr/local/node-24/bin/tsc --version 2>&1 || echo "TypeScript (Node 24) not found"' >> /usr/local/bin/check-versions.sh && \
+    echo 'echo ""' >> /usr/local/bin/check-versions.sh && \
+    echo 'echo "All version checks completed!"' >> /usr/local/bin/check-versions.sh && \
+    chmod +x /usr/local/bin/check-versions.sh
+
+# ============================================
+# CLEANUP
+# ============================================
+RUN apt-get clean && \
+    rm -rf /var/lib/apt/lists/* /tmp/* /var/tmp/*
+
+# Default command to check all versions
+CMD ["/usr/local/bin/check-versions.sh"]

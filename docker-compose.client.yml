@@ -1,0 +1,107 @@
+# Judge0 Production Docker Compose - Client Configuration
+# For LeetCode/HackerRank-style competitive coding platform
+# 
+# Usage:
+#   docker-compose -f docker-compose.client.yml up -d
+#
+# This configuration uses the custom compilers image with 23 languages
+
+x-logging:
+  &default-logging
+  logging:
+    driver: json-file
+    options:
+      max-size: "100m"
+      max-file: "5"
+
+services:
+  server:
+    image: judge0/judge0:1.13.1
+    container_name: judge0-server
+    volumes:
+      - ./languages-config/active-client.rb:/api/db/languages/active.rb:ro
+    ports:
+      - "${JUDGE0_PORT:-2358}:2358"
+    privileged: true
+    <<: *default-logging
+    restart: unless-stopped
+    environment:
+      # Database
+      POSTGRES_HOST: db
+      POSTGRES_DB: judge0
+      POSTGRES_USER: judge0
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-YourSecurePassword}
+      
+      # Redis
+      REDIS_HOST: redis
+      REDIS_PORT: 6379
+      REDIS_PASSWORD: ${REDIS_PASSWORD:-YourRedisPassword}
+      
+      # API Settings
+      AUTHN_HEADER: ${AUTHN_HEADER:-X-Auth-Token}
+      AUTHN_TOKEN: ${AUTHN_TOKEN:-YourAuthToken}
+      AUTHZ_HEADER: ${AUTHZ_HEADER:-X-Auth-User}
+      AUTHZ_TOKEN: ${AUTHZ_TOKEN:-YourAuthzToken}
+      
+      # Limits
+      MAX_QUEUE_SIZE: ${MAX_QUEUE_SIZE:-100}
+      CPU_TIME_LIMIT: ${CPU_TIME_LIMIT:-15}
+      CPU_EXTRA_TIME: ${CPU_EXTRA_TIME:-5}
+      WALL_TIME_LIMIT: ${WALL_TIME_LIMIT:-30}
+      MEMORY_LIMIT: ${MEMORY_LIMIT:-256000}
+      MAX_PROCESSES_AND_OR_THREADS: ${MAX_PROCESSES:-60}
+      ENABLE_WAIT_RESULT: ${ENABLE_WAIT_RESULT:-true}
+      
+      # Workers
+      RAILS_MAX_THREADS: ${RAILS_MAX_THREADS:-8}
+      
+    depends_on:
+      - db
+      - redis
+
+  workers:
+    image: ghcr.io/umerfarok/judge0-client:latest
+    container_name: judge0-workers
+    command: ["./scripts/workers"]
+    volumes:
+      - ./languages-config/active-client.rb:/api/db/languages/active.rb:ro
+    privileged: true
+    <<: *default-logging
+    restart: unless-stopped
+    environment:
+      POSTGRES_HOST: db
+      POSTGRES_DB: judge0
+      POSTGRES_USER: judge0
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-YourSecurePassword}
+      REDIS_HOST: redis
+      REDIS_PORT: 6379
+      REDIS_PASSWORD: ${REDIS_PASSWORD:-YourRedisPassword}
+      COUNT: ${WORKER_COUNT:-4}
+    depends_on:
+      - db
+      - redis
+
+  db:
+    image: postgres:16-alpine
+    container_name: judge0-db
+    volumes:
+      - postgres-data:/var/lib/postgresql/data
+    <<: *default-logging
+    restart: unless-stopped
+    environment:
+      POSTGRES_DB: judge0
+      POSTGRES_USER: judge0
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-YourSecurePassword}
+
+  redis:
+    image: redis:7-alpine
+    container_name: judge0-redis
+    command: redis-server --appendonly yes --requirepass ${REDIS_PASSWORD:-YourRedisPassword}
+    volumes:
+      - redis-data:/data
+    <<: *default-logging
+    restart: unless-stopped
+
+volumes:
+  postgres-data:
+  redis-data:

@@ -1,3 +1,0 @@
-Registry: ghcr.io/umerfarok/juge0:v2
-Size: ~5-6 GB
-Base: Judge0 1.13.1 + Custom Compilers
