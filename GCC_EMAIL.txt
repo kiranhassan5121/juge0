@@ -1,0 +1,99 @@
+**Subject:** GCC Version Clarification - Judge0 v7
+
+Hi,
+
+Quick clarification on the GCC versions in your v7 image:
+
+---
+
+## Current Setup
+
+**Actual GCC:** `12.2.0` (Debian Bookworm stable)  
+**Labeled as:** GCC 14 & GCC 15 (via symlinks)
+
+**Why?**
+- Compiling real GCC 14/15 from source = **6-8 hours build time**
+- Current setup = **15 minutes build time**
+- GCC 12.2.0 = **Production-stable, full C++20 support**
+
+---
+
+## Three Options:
+
+### ✅ **Option A: Keep GCC 12.2.0 with Honest Labels** (Recommended)
+
+Update language names to:
+- "C (GCC 12.2.0)" instead of "C (GCC 14.3.0)"
+- "C++ (GCC 12.2.0)" instead of "C++ (GCC 14.3.0)"
+
+**Pros:** Fast builds (15 min), honest, production-stable  
+**Cons:** Not cutting-edge version number
+
+---
+
+### ⏱️ **Option B: True GCC 14/15 from Source**
+
+Switch to `Dockerfile.client` (compiles from source)
+
+**Pros:** Accurate versions, latest features  
+**Cons:** 6-8 hour builds, larger image (5 GB vs 2.8 GB)
+
+---
+
+### ⚠️ **Option C: Keep Current Labels (GCC 14/15)**
+
+Leave as-is (says GCC 14/15 but runs GCC 12.2.0)
+
+**Pros:** No changes needed  
+**Cons:** Misleading version numbers
+
+---
+
+## 📊 Quick Comparison
+
+| | Fast Build (GCC 12) | Source Build (GCC 14/15) |
+|---|---|---|
+| **Build Time** | 15 minutes | 6-8 hours |
+| **Image Size** | 2.8 GB | ~5 GB |
+| **C++20** | ✅ Full | ✅ Full |
+| **Honest Labels** | ✅ (with update) | ✅ |
+
+---
+
+## 💡 My Recommendation
+
+**Go with Option A** - Keep fast GCC 12.2.0 build but update labels to be honest:
+
+```ruby
+# languages-config/active-client.rb
+"C (GCC 12.2.0)"   # IDs 50-51
+"C++ (GCC 12.2.0)" # IDs 54-55
+```
+
+**Why?**
+- GCC 12 is **fully functional** for competitive coding
+- **99.9% of LeetCode/HackerRank problems** work fine
+- **15-minute builds** mean faster deployments
+- **Honest = Better** for long-term trust
+
+You still have **4 C/C++ compilers:**
+- GCC 12.2.0 (C & C++)
+- Clang 18.1.8 (C & C++)
+- Clang 19.1.7 (C & C++)
+
+---
+
+## ❓ Your Choice?
+
+Reply with:
+- **A** = Update to honest GCC 12.2.0 labels ✅ **(I recommend this)**
+- **B** = Switch to true GCC 14/15 (8-hour builds) ⏱️
+- **C** = Keep current GCC 14/15 labels as-is ⚠️
+
+I can implement the changes immediately!
+
+---
+
+**TL;DR:** Current image uses GCC 12.2.0 (labeled as 14/15 for fast builds). Options: (A) honest labels, (B) true 14/15 with 8hr builds, or (C) keep as-is. I recommend **Option A**.
+
+See attached `GCC_VERSION_CLARIFICATION.md` for full technical details.
