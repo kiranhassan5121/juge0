@@ -60,7 +60,7 @@ services:
       - redis
 
   workers:
-    image: ghcr.io/umerfarok/judge0-client:latest
+    image: ghcr.io/umerfarok/juge0:v7
     container_name: judge0-workers
     command: ["./scripts/workers"]
     volumes:
