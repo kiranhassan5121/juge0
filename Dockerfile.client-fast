@@ -64,18 +64,29 @@ ENV LANG=en_US.UTF-8 \
     LC_ALL=en_US.UTF-8
 
 # ============================================
-# GCC 14 (from Ubuntu Toolchain PPA via debs)
-# We'll install latest GCC available in bookworm-backports
+# GCC 14 from Ubuntu Toolchain PPA
+# Try to get real GCC 14 from testing repos
 # ============================================
 RUN set -ex && \
-    echo "deb http://deb.debian.org/debian bookworm-backports main" >> /etc/apt/sources.list && \
+    # Add Ubuntu testing PPA for newer GCC
     apt-get update && \
-    apt-get install -y -t bookworm-backports gcc g++ && \
-    # Create symlinks for our paths
-    mkdir -p /usr/local/gcc-14/bin && \
-    ln -sf /usr/bin/gcc /usr/local/gcc-14/bin/gcc && \
-    ln -sf /usr/bin/g++ /usr/local/gcc-14/bin/g++ && \
-    # Create gcc-15 as alias (same binary, different name for now)
+    apt-get install -y software-properties-common gnupg && \
+    # Try Ubuntu toolchain test PPA (has GCC 14)
+    echo "deb http://ppa.launchpad.net/ubuntu-toolchain-r/test/ubuntu jammy main" >> /etc/apt/sources.list.d/toolchain.list && \
+    apt-key adv --keyserver keyserver.ubuntu.com --recv-keys 60C317803A41BA51845E371A1E9377A2BA9EF27F || true && \
+    apt-get update && \
+    # Try to install GCC 14
+    (apt-get install -y gcc-14 g++-14 && \
+     mkdir -p /usr/local/gcc-14/bin && \
+     ln -sf /usr/bin/gcc-14 /usr/local/gcc-14/bin/gcc && \
+     ln -sf /usr/bin/g++-14 /usr/local/gcc-14/bin/g++ && \
+     echo "✅ GCC 14 installed successfully!") || \
+    # Fallback to system GCC if 14 not available
+    (echo "⚠️ GCC 14 not available, using system GCC" && \
+     mkdir -p /usr/local/gcc-14/bin && \
+     ln -sf /usr/bin/gcc /usr/local/gcc-14/bin/gcc && \
+     ln -sf /usr/bin/g++ /usr/local/gcc-14/bin/g++) && \
+    # GCC 15 - use system for now
     mkdir -p /usr/local/gcc-15/bin && \
     ln -sf /usr/bin/gcc /usr/local/gcc-15/bin/gcc && \
     ln -sf /usr/bin/g++ /usr/local/gcc-15/bin/g++ && \
@@ -292,8 +303,8 @@ RUN echo '#!/bin/bash' > /usr/local/bin/check-versions.sh && \
     echo 'export JAVA_HOME=/usr/local/jdk-25' >> /usr/local/bin/check-versions.sh && \
     echo 'export PATH="/usr/local/jdk-25/bin:/usr/local/node-22/bin:/usr/local/node-24/bin:$PATH"' >> /usr/local/bin/check-versions.sh && \
     echo 'echo "=== GCC Versions ===" ' >> /usr/local/bin/check-versions.sh && \
-    echo '/usr/local/gcc-14/bin/gcc --version 2>/dev/null | head -1 || echo "GCC 14 not found"' >> /usr/local/bin/check-versions.sh && \
-    echo '/usr/local/gcc-15/bin/gcc --version 2>/dev/null | head -1 || echo "GCC 15 not found"' >> /usr/local/bin/check-versions.sh && \
+    echo 'echo -n "GCC 14: " && /usr/local/gcc-14/bin/gcc --version 2>/dev/null | head -1 || echo "not found"' >> /usr/local/bin/check-versions.sh && \
+    echo 'echo -n "GCC 15: " && /usr/local/gcc-15/bin/gcc --version 2>/dev/null | head -1 || echo "not found"' >> /usr/local/bin/check-versions.sh && \
     echo 'echo "=== Clang Versions ===" ' >> /usr/local/bin/check-versions.sh && \
     echo '/usr/local/clang-18/bin/clang --version 2>/dev/null | head -1 || echo "Clang 18 not found"' >> /usr/local/bin/check-versions.sh && \
     echo '/usr/local/clang-19/bin/clang --version 2>/dev/null | head -1 || echo "Clang 19 not found"' >> /usr/local/bin/check-versions.sh && \
