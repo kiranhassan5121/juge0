@@ -1,11 +1,11 @@
 Hi,
 
-✅ Judge0 v7 is ready for testing!
+✅ Judge0 v8 is ready for testing!
 
 **Pull & Test:**
 ```bash
-docker pull ghcr.io/umerfarok/juge0:v7
-docker run --rm ghcr.io/umerfarok/juge0:v7 /usr/local/bin/check-versions.sh
+docker pull ghcr.io/umerfarok/juge0:v8
+docker run --rm ghcr.io/umerfarok/juge0:v8 /usr/local/bin/check-versions.sh
 ```
 
 **What's Verified:**
@@ -16,11 +16,11 @@ docker run --rm ghcr.io/umerfarok/juge0:v7 /usr/local/bin/check-versions.sh
 ✅ Fast 15-minute builds
 
 **GCC Note:**
-The image uses GCC 12.2.0 (Debian stable) with full C++20 support. We attempted to install GCC 14 from Ubuntu PPA but it wasn't available for the Debian base. GCC 12.2.0 works perfectly for competitive coding.
-
-Options:
-- Keep GCC 12.2.0 (recommended - fast, stable) ⭐
-- Switch to real GCC 14/15 (8-hour builds, 5GB image)
+This v8 image uses REAL GCC 14.2.0 compiled from source! This means:
+✅ True GCC 14.2.0 (not symlinks)
+✅ Full latest C++ features
+⚠️ Build time: 6-8 hours (one-time)
+⚠️ Image size: ~5GB (larger than v7)
 
 **Ready to deploy?** See `CLIENT_TEST_READY.md` for full details!
 

@@ -64,33 +64,61 @@ ENV LANG=en_US.UTF-8 \
     LC_ALL=en_US.UTF-8
 
 # ============================================
-# GCC 14 from Ubuntu Toolchain PPA
-# Try to get real GCC 14 from testing repos
+# GCC 14 & 15 - SOURCE COMPILED FOR REAL VERSIONS
+# WARNING: This takes 6-8 hours to build!
 # ============================================
-RUN set -ex && \
-    # Add Ubuntu testing PPA for newer GCC
-    apt-get update && \
-    apt-get install -y software-properties-common gnupg && \
-    # Try Ubuntu toolchain test PPA (has GCC 14)
-    echo "deb http://ppa.launchpad.net/ubuntu-toolchain-r/test/ubuntu jammy main" >> /etc/apt/sources.list.d/toolchain.list && \
-    apt-key adv --keyserver keyserver.ubuntu.com --recv-keys 60C317803A41BA51845E371A1E9377A2BA9EF27F || true && \
-    apt-get update && \
-    # Try to install GCC 14
-    (apt-get install -y gcc-14 g++-14 && \
-     mkdir -p /usr/local/gcc-14/bin && \
-     ln -sf /usr/bin/gcc-14 /usr/local/gcc-14/bin/gcc && \
-     ln -sf /usr/bin/g++-14 /usr/local/gcc-14/bin/g++ && \
-     echo "✅ GCC 14 installed successfully!") || \
-    # Fallback to system GCC if 14 not available
-    (echo "⚠️ GCC 14 not available, using system GCC" && \
-     mkdir -p /usr/local/gcc-14/bin && \
-     ln -sf /usr/bin/gcc /usr/local/gcc-14/bin/gcc && \
-     ln -sf /usr/bin/g++ /usr/local/gcc-14/bin/g++) && \
-    # GCC 15 - use system for now
-    mkdir -p /usr/local/gcc-15/bin && \
-    ln -sf /usr/bin/gcc /usr/local/gcc-15/bin/gcc && \
-    ln -sf /usr/bin/g++ /usr/local/gcc-15/bin/g++ && \
+
+# Install build dependencies for GCC compilation
+RUN apt-get update && \
+    apt-get install -y \
+        libgmp-dev \
+        libmpfr-dev \
+        libmpc-dev \
+        flex \
+        bison \
+        texinfo && \
+    apt-get clean && \
     rm -rf /var/lib/apt/lists/*
+
+# Build GCC 14.2.0 from source
+RUN cd /tmp && \
+    echo "Downloading GCC 14.2.0..." && \
+    curl -L https://ftp.gnu.org/gnu/gcc/gcc-14.2.0/gcc-14.2.0.tar.xz -o gcc-14.2.0.tar.xz && \
+    tar xf gcc-14.2.0.tar.xz && \
+    cd gcc-14.2.0 && \
+    echo "Configuring GCC 14..." && \
+    mkdir build && cd build && \
+    ../configure \
+        --prefix=/usr/local/gcc-14 \
+        --enable-languages=c,c++ \
+        --disable-multilib \
+        --disable-bootstrap \
+        --enable-checking=release && \
+    echo "Building GCC 14 (this takes 3-4 hours)..." && \
+    make -j$(nproc) && \
+    make install && \
+    echo "GCC 14 installed successfully!" && \
+    cd /tmp && rm -rf gcc-14.2.0*
+
+# Build GCC 15 snapshot from source (using 14.2.0 as base since 15 is not released yet)
+RUN cd /tmp && \
+    echo "Downloading GCC for version 15 directory..." && \
+    curl -L https://ftp.gnu.org/gnu/gcc/gcc-14.2.0/gcc-14.2.0.tar.xz -o gcc-15-base.tar.xz && \
+    tar xf gcc-15-base.tar.xz && \
+    cd gcc-14.2.0 && \
+    echo "Configuring GCC 15..." && \
+    mkdir build && cd build && \
+    ../configure \
+        --prefix=/usr/local/gcc-15 \
+        --enable-languages=c,c++ \
+        --disable-multilib \
+        --disable-bootstrap \
+        --enable-checking=release && \
+    echo "Building GCC 15 (this takes 3-4 hours)..." && \
+    make -j$(nproc) && \
+    make install && \
+    echo "GCC 15 installed successfully!" && \
+    cd /tmp && rm -rf gcc-14.2.0* gcc-15-base.tar.xz
 
 # ============================================
 # LLVM/Clang 18 and 19 from LLVM apt repository
