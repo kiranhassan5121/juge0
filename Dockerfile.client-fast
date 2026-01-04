@@ -1,20 +1,25 @@
-# Judge0 Custom Compilers - Client Requirements (Fast Build Version)
-# Uses pre-built binaries where possible to reduce build time
+# Judge0 v9 - Complete Image with Real GCC 14/15 + Judge0 API
+# Stage 1: Build custom compilers
+# Stage 2: Add Judge0 API application
 # Base: buildpack-deps:bookworm (Debian 12)
 #
 # Languages (23 entries):
-# - C/C++ via system GCC + Clang from LLVM apt repo
+# - C/C++ via GCC 14/15 (source-compiled)
+# - Clang 18/19 from LLVM apt repo  
 # - Python (2.7.18, 3.11.14, 3.14.2)
 # - Java (JDK 25 from Adoptium)
 # - Go (1.25.4)
 # - Rust (1.89.0)
-# - Ruby (2.7.8, 3.4.7)
+# - Ruby (3.2.8, 3.4.7)
 # - Kotlin (2.3.0)
-# - PHP (8.2.30, 8.4.x)
+# - PHP (8.2.30, 8.4.3)
 # - JavaScript/Node.js (22.x, 24.x)
 # - TypeScript (5.7.3, 5.9.3)
 
-FROM buildpack-deps:bookworm
+# ============================================
+# STAGE 1: COMPILERS
+# ============================================
+FROM buildpack-deps:bookworm AS compilers
 
 ENV DEBIAN_FRONTEND=noninteractive
 
@@ -365,10 +370,57 @@ RUN echo '#!/bin/bash' > /usr/local/bin/check-versions.sh && \
     chmod +x /usr/local/bin/check-versions.sh
 
 # ============================================
-# CLEANUP
+# CLEANUP STAGE 1
 # ============================================
 RUN apt-get clean && \
     rm -rf /var/lib/apt/lists/* /tmp/* /var/tmp/*
 
-# Default command to check all versions
-CMD ["/usr/local/bin/check-versions.sh"]
+# ============================================
+# STAGE 2: JUDGE0 API APPLICATION
+# ============================================
+FROM compilers AS final
+
+# Install isolate sandbox
+RUN set -xe && \
+    apt-get update && \
+    apt-get install -y --no-install-recommends git libcap-dev && \
+    rm -rf /var/lib/apt/lists/* && \
+    git clone https://github.com/judge0/isolate.git /tmp/isolate && \
+    cd /tmp/isolate && \
+    git checkout ad39cc4d0fbb577fb545910095c9da5ef8fc9a1a && \
+    make -j$(nproc) install && \
+    rm -rf /tmp/*
+
+ENV BOX_ROOT=/var/local/lib/isolate
+
+# Install Ruby for Judge0 API (using system Ruby)
+RUN apt-get update && \
+    apt-get install -y --no-install-recommends \
+        ruby \
+        ruby-dev \
+        ruby-bundler \
+        postgresql-client \
+        libpq-dev && \
+    rm -rf /var/lib/apt/lists/*
+
+# Clone and setup Judge0 API
+RUN git clone https://github.com/judge0/judge0.git /api && \
+    cd /api && \
+    git checkout v1.13.0 && \
+    bundle install
+
+WORKDIR /api
+
+# Create necessary directories
+RUN mkdir -p /api/tmp /api/log && \
+    chmod +x /api/scripts/* && \
+    chmod +x /api/docker-entrypoint.sh
+
+# Expose Judge0 API port
+EXPOSE 2358
+
+# Set entrypoint
+ENTRYPOINT ["/api/docker-entrypoint.sh"]
+
+# Default command runs the server
+CMD ["./scripts/server"]
