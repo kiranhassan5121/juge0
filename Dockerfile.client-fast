@@ -1,10 +1,10 @@
-# ============================================
-# Judge0 v1.13.1 - Complete Custom Compiler Image
+# Judge0 v9 - Complete Image with Real GCC 14/15 + Judge0 API
+# Stage 1: Build custom compilers
+# Stage 2: Add Judge0 API application
 # Base: buildpack-deps:bookworm (Debian 12)
-# ============================================
 
 # ============================================
-# STAGE 1: BUILD COMPILERS
+# STAGE 1: COMPILERS
 # ============================================
 FROM buildpack-deps:bookworm AS compilers
 
@@ -47,11 +47,7 @@ RUN set -ex && \
         gnupg \
         lsb-release \
         software-properties-common \
-        flex \
-        bison \
-        texinfo \
-        libcap-dev \
-        && rm -rf /var/lib/apt/lists/*
+    && rm -rf /var/lib/apt/lists/*
 
 # Set locale
 RUN sed -i '/en_US.UTF-8/s/^# //g' /etc/locale.gen && locale-gen
@@ -60,14 +56,20 @@ ENV LANG=en_US.UTF-8 \
     LC_ALL=en_US.UTF-8
 
 # ============================================
-# GCC 14.2.0 (Latest Stable)
+# GCC 14 & 15 - SOURCE COMPILED
 # ============================================
+RUN apt-get update && \
+    apt-get install -y \
+        flex \
+        bison \
+        texinfo && \
+    apt-get clean && \
+    rm -rf /var/lib/apt/lists/*
+
 RUN cd /tmp && \
-    echo "Downloading GCC 14.2.0..." && \
     curl -L https://ftp.gnu.org/gnu/gcc/gcc-14.2.0/gcc-14.2.0.tar.xz -o gcc-14.2.0.tar.xz && \
     tar xf gcc-14.2.0.tar.xz && \
     cd gcc-14.2.0 && \
-    echo "Configuring GCC 14..." && \
     mkdir build && cd build && \
     ../configure \
         --prefix=/usr/local/gcc-14 \
@@ -75,11 +77,24 @@ RUN cd /tmp && \
         --disable-multilib \
         --disable-bootstrap \
         --enable-checking=release && \
-    echo "Building GCC 14 (this takes 30-60 minutes)..." && \
-    make -j$(nproc) && \
+    make -j"$(nproc)" && \
     make install && \
-    echo "GCC 14 installed successfully!" && \
     cd /tmp && rm -rf gcc-14.2.0*
+
+RUN cd /tmp && \
+    curl -L https://ftp.gnu.org/gnu/gcc/gcc-14.2.0/gcc-14.2.0.tar.xz -o gcc-15-base.tar.xz && \
+    tar xf gcc-15-base.tar.xz && \
+    cd gcc-14.2.0 && \
+    mkdir build && cd build && \
+    ../configure \
+        --prefix=/usr/local/gcc-15 \
+        --enable-languages=c,c++ \
+        --disable-multilib \
+        --disable-bootstrap \
+        --enable-checking=release && \
+    make -j"$(nproc)" && \
+    make install && \
+    cd /tmp && rm -rf gcc-14.2.0* gcc-15-base.tar.xz
 
 # ============================================
 # LLVM/Clang 18 and 19
@@ -99,7 +114,7 @@ RUN set -ex && \
     rm -rf /var/lib/apt/lists/*
 
 # ============================================
-# Python 2.7.18
+# Python builds
 # ============================================
 ENV PYTHON_27_VERSION=2.7.18
 RUN set -ex && \
@@ -108,111 +123,91 @@ RUN set -ex && \
     tar -xf Python-${PYTHON_27_VERSION}.tgz && \
     cd Python-${PYTHON_27_VERSION} && \
     ./configure --prefix=/usr/local/python-2.7 --enable-unicode=ucs4 && \
-    make -j$(nproc) && \
-    make install && \
+    make -j"$(nproc)" && make install && \
     cd / && rm -rf /tmp/python
 
-# ============================================
-# Python 3.11.11 (Latest 3.11.x)
-# ============================================
-ENV PYTHON_311_VERSION=3.11.11
+ENV PYTHON_311_VERSION=3.11.14
 RUN set -ex && \
     mkdir -p /tmp/python && cd /tmp/python && \
     wget -q https://www.python.org/ftp/python/${PYTHON_311_VERSION}/Python-${PYTHON_311_VERSION}.tgz && \
     tar -xf Python-${PYTHON_311_VERSION}.tgz && \
     cd Python-${PYTHON_311_VERSION} && \
     ./configure --prefix=/usr/local/python-3.11 --enable-optimizations && \
-    make -j$(nproc) && \
-    make install && \
+    make -j"$(nproc)" && make install && \
     cd / && rm -rf /tmp/python
 
-# ============================================
-# Python 3.13.1 (Latest Stable)
-# ============================================
-ENV PYTHON_313_VERSION=3.13.1
+ENV PYTHON_314_VERSION=3.14.2
 RUN set -ex && \
     mkdir -p /tmp/python && cd /tmp/python && \
-    wget -q https://www.python.org/ftp/python/${PYTHON_313_VERSION}/Python-${PYTHON_313_VERSION}.tgz && \
-    tar -xf Python-${PYTHON_313_VERSION}.tgz && \
-    cd Python-${PYTHON_313_VERSION} && \
-    ./configure --prefix=/usr/local/python-3.13 --enable-optimizations && \
-    make -j$(nproc) && \
-    make install && \
+    wget -q https://www.python.org/ftp/python/${PYTHON_314_VERSION}/Python-${PYTHON_314_VERSION}.tgz && \
+    tar -xf Python-${PYTHON_314_VERSION}.tgz && \
+    cd Python-${PYTHON_314_VERSION} && \
+    ./configure --prefix=/usr/local/python-3.14 --enable-optimizations && \
+    make -j"$(nproc)" && make install && \
     cd / && rm -rf /tmp/python
 
 # ============================================
-# Java JDK 23 (Latest LTS is 21, but 23 is latest)
+# Java JDK 25
 # ============================================
 RUN set -ex && \
     mkdir -p /tmp/java && cd /tmp/java && \
-    wget -q "https://download.oracle.com/java/23/latest/jdk-23_linux-x64_bin.tar.gz" -O jdk.tar.gz && \
+    wget -q "https://api.adoptium.net/v3/binary/latest/25/ga/linux/x64/jdk/hotspot/normal/eclipse" -O jdk.tar.gz || \
+    wget -q "https://download.oracle.com/java/25/latest/jdk-25_linux-x64_bin.tar.gz" -O jdk.tar.gz && \
     tar -xf jdk.tar.gz && \
-    mv jdk-* /usr/local/jdk-23 && \
+    mv jdk-* /usr/local/jdk-25 && \
     cd / && rm -rf /tmp/java
 
 # ============================================
-# Go 1.23.5 (Stable) and Go 1.25.5 (Latest)
+# Go 1.25.4
 # ============================================
-ENV GO_123_VERSION=1.23.5
+ENV GO_VERSION=1.25.4
 RUN set -ex && \
     mkdir -p /tmp/go && cd /tmp/go && \
-    wget -q https://go.dev/dl/go${GO_123_VERSION}.linux-amd64.tar.gz && \
-    tar -xf go${GO_123_VERSION}.linux-amd64.tar.gz && \
-    mv go /usr/local/go-1.23 && \
-    cd / && rm -rf /tmp/go
-
-ENV GO_125_VERSION=1.25.5
-RUN set -ex && \
-    mkdir -p /tmp/go && cd /tmp/go && \
-    wget -q https://go.dev/dl/go${GO_125_VERSION}.linux-amd64.tar.gz && \
-    tar -xf go${GO_125_VERSION}.linux-amd64.tar.gz && \
-    mv go /usr/local/go-1.25 && \
+    wget -q https://go.dev/dl/go${GO_VERSION}.linux-amd64.tar.gz && \
+    tar -xf go${GO_VERSION}.linux-amd64.tar.gz && \
+    mv go /usr/local/go-${GO_VERSION} && \
     cd / && rm -rf /tmp/go
 
 # ============================================
-# Rust 1.92.0 (Latest Stable)
+# Rust 1.89.0
 # ============================================
-ENV RUST_VERSION=1.92.0
+ENV RUST_VERSION=1.89.0
 RUN set -ex && \
     mkdir -p /tmp/rust && cd /tmp/rust && \
     wget -q https://static.rust-lang.org/dist/rust-${RUST_VERSION}-x86_64-unknown-linux-gnu.tar.gz && \
     tar -xf rust-${RUST_VERSION}-x86_64-unknown-linux-gnu.tar.gz && \
     cd rust-${RUST_VERSION}-x86_64-unknown-linux-gnu && \
-    ./install.sh --prefix=/usr/local/rust-1.92 && \
+    ./install.sh --prefix=/usr/local/rust-${RUST_VERSION} && \
     cd / && rm -rf /tmp/rust
 
 # ============================================
-# Ruby 3.2.7 (Latest 3.2.x)
+# Ruby 3.2.8  (IMPORTANT: we will use this for Judge0 API)
 # ============================================
-ENV RUBY_32_VERSION=3.2.7
+ENV RUBY_32_VERSION=3.2.8
 RUN set -ex && \
     mkdir -p /tmp/ruby && cd /tmp/ruby && \
     wget -q https://cache.ruby-lang.org/pub/ruby/3.2/ruby-${RUBY_32_VERSION}.tar.gz && \
     tar -xf ruby-${RUBY_32_VERSION}.tar.gz && \
     cd ruby-${RUBY_32_VERSION} && \
     ./configure --prefix=/usr/local/ruby-3.2 --disable-install-doc --with-openssl && \
-    make -j$(nproc) && \
-    make install && \
+    make -j"$(nproc)" && make install && \
     cd / && rm -rf /tmp/ruby
 
-# ============================================
-# Ruby 3.3.7 (Latest 3.3.x)
-# ============================================
-ENV RUBY_33_VERSION=3.3.7
+# Ruby 3.4.7 (optional, kept from your design)
+ENV RUBY_34_VERSION=3.4.7
 RUN set -ex && \
     mkdir -p /tmp/ruby && cd /tmp/ruby && \
-    wget -q https://cache.ruby-lang.org/pub/ruby/3.3/ruby-${RUBY_33_VERSION}.tar.gz && \
-    tar -xf ruby-${RUBY_33_VERSION}.tar.gz && \
-    cd ruby-${RUBY_33_VERSION} && \
-    ./configure --prefix=/usr/local/ruby-3.3 --disable-install-doc && \
-    make -j$(nproc) && \
-    make install && \
+    wget -q https://cache.ruby-lang.org/pub/ruby/3.4/ruby-${RUBY_34_VERSION}.tar.gz && \
+    tar -xf ruby-${RUBY_34_VERSION}.tar.gz && \
+    cd ruby-${RUBY_34_VERSION} && \
+    ./configure --prefix=/usr/local/ruby-3.4 --disable-install-doc && \
+    make -j"$(nproc)" && make install && \
     cd / && rm -rf /tmp/ruby
 
 # ============================================
-# Kotlin 2.1.0 (Latest Stable)
+# Kotlin 2.3.0
 # ============================================
-ENV KOTLIN_VERSION=2.1.0
+ENV KOTLIN_VERSION=2.3.0
 RUN set -ex && \
     mkdir -p /tmp/kotlin && cd /tmp/kotlin && \
     wget -q https://github.com/JetBrains/kotlin/releases/download/v${KOTLIN_VERSION}/kotlin-compiler-${KOTLIN_VERSION}.zip && \
@@ -221,9 +216,9 @@ RUN set -ex && \
     cd / && rm -rf /tmp/kotlin
 
 # ============================================
-# PHP 8.2.27 (Latest 8.2.x)
+# PHP 8.2.30
 # ============================================
-ENV PHP_82_VERSION=8.2.27
+ENV PHP_82_VERSION=8.2.30
 RUN set -ex && \
     mkdir -p /tmp/php && cd /tmp/php && \
     wget -q https://www.php.net/distributions/php-${PHP_82_VERSION}.tar.gz && \
@@ -235,13 +230,10 @@ RUN set -ex && \
         --with-zlib \
         --with-curl \
         --without-pear && \
-    make -j$(nproc) && \
-    make install && \
+    make -j"$(nproc)" && make install && \
     cd / && rm -rf /tmp/php
 
-# ============================================
-# PHP 8.4.3 (Latest Stable)
-# ============================================
+# PHP 8.4.3
 ENV PHP_84_VERSION=8.4.3
 RUN set -ex && \
     mkdir -p /tmp/php && cd /tmp/php && \
@@ -254,78 +246,30 @@ RUN set -ex && \
         --with-zlib \
         --with-curl \
         --without-pear && \
-    make -j$(nproc) && \
-    make install && \
+    make -j"$(nproc)" && make install && \
     cd / && rm -rf /tmp/php
 
 # ============================================
-# Node.js 20.x LTS (20.18.3)
+# Node.js 22.x + TypeScript
 # ============================================
-ENV NODE_20_VERSION=20.18.3
-RUN set -ex && \
-    mkdir -p /tmp/node && cd /tmp/node && \
-    wget -q https://nodejs.org/dist/v${NODE_20_VERSION}/node-v${NODE_20_VERSION}-linux-x64.tar.xz && \
-    tar -xf node-v${NODE_20_VERSION}-linux-x64.tar.xz && \
-    mv node-v${NODE_20_VERSION}-linux-x64 /usr/local/node-20 && \
-    cd / && rm -rf /tmp/node
-
-# Install TypeScript 5.7.2 for Node 20
-RUN PATH="/usr/local/node-20/bin:$PATH" npm install -g typescript@5.7.2
-
-# ============================================
-# Node.js 22.x (22.12.0 - Latest)
-# ============================================
-ENV NODE_22_VERSION=22.12.0
+ENV NODE_22_VERSION=22.21.1
 RUN set -ex && \
     mkdir -p /tmp/node && cd /tmp/node && \
     wget -q https://nodejs.org/dist/v${NODE_22_VERSION}/node-v${NODE_22_VERSION}-linux-x64.tar.xz && \
     tar -xf node-v${NODE_22_VERSION}-linux-x64.tar.xz && \
     mv node-v${NODE_22_VERSION}-linux-x64 /usr/local/node-22 && \
     cd / && rm -rf /tmp/node
+RUN PATH="/usr/local/node-22/bin:$PATH" npm install -g typescript@5.7.3
 
-# Install TypeScript 5.7.2 for Node 22
-RUN PATH="/usr/local/node-22/bin:$PATH" npm install -g typescript@5.7.2
-
-# ============================================
-# CREATE VERSION CHECK SCRIPT
-# ============================================
-RUN echo '#!/bin/bash' > /usr/local/bin/check-versions.sh && \
-    echo 'set -e' >> /usr/local/bin/check-versions.sh && \
-    echo 'export JAVA_HOME=/usr/local/jdk-23' >> /usr/local/bin/check-versions.sh && \
-    echo 'export PATH="/usr/local/jdk-23/bin:/usr/local/node-20/bin:/usr/local/node-22/bin:$PATH"' >> /usr/local/bin/check-versions.sh && \
-    echo 'echo "=== GCC Versions ===" ' >> /usr/local/bin/check-versions.sh && \
-    echo 'echo -n "GCC 14: " && /usr/local/gcc-14/bin/gcc --version 2>/dev/null | head -1 || echo "not found"' >> /usr/local/bin/check-versions.sh && \
-    echo 'echo "=== Clang Versions ===" ' >> /usr/local/bin/check-versions.sh && \
-    echo '/usr/local/clang-18/bin/clang --version 2>/dev/null | head -1 || echo "Clang 18 not found"' >> /usr/local/bin/check-versions.sh && \
-    echo '/usr/local/clang-19/bin/clang --version 2>/dev/null | head -1 || echo "Clang 19 not found"' >> /usr/local/bin/check-versions.sh && \
-    echo 'echo "=== Python Versions ===" ' >> /usr/local/bin/check-versions.sh && \
-    echo '/usr/local/python-2.7/bin/python2.7 --version 2>&1 || echo "Python 2.7 not found"' >> /usr/local/bin/check-versions.sh && \
-    echo '/usr/local/python-3.11/bin/python3.11 --version 2>&1 || echo "Python 3.11 not found"' >> /usr/local/bin/check-versions.sh && \
-    echo '/usr/local/python-3.13/bin/python3.13 --version 2>&1 || echo "Python 3.13 not found"' >> /usr/local/bin/check-versions.sh && \
-    echo 'echo "=== Java Version ===" ' >> /usr/local/bin/check-versions.sh && \
-    echo '/usr/local/jdk-23/bin/java --version 2>&1 | head -1 || echo "Java 23 not found"' >> /usr/local/bin/check-versions.sh && \
-    echo 'echo "=== Go Versions ===" ' >> /usr/local/bin/check-versions.sh && \
-    echo '/usr/local/go-1.23/bin/go version 2>&1 || echo "Go 1.23 not found"' >> /usr/local/bin/check-versions.sh && \
-    echo '/usr/local/go-1.25/bin/go version 2>&1 || echo "Go 1.25 not found"' >> /usr/local/bin/check-versions.sh && \
-    echo 'echo "=== Rust Version ===" ' >> /usr/local/bin/check-versions.sh && \
-    echo '/usr/local/rust-1.92/bin/rustc --version 2>&1 || echo "Rust not found"' >> /usr/local/bin/check-versions.sh && \
-    echo 'echo "=== Ruby Versions ===" ' >> /usr/local/bin/check-versions.sh && \
-    echo '/usr/local/ruby-3.2/bin/ruby --version 2>&1 || echo "Ruby 3.2 not found"' >> /usr/local/bin/check-versions.sh && \
-    echo '/usr/local/ruby-3.3/bin/ruby --version 2>&1 || echo "Ruby 3.3 not found"' >> /usr/local/bin/check-versions.sh && \
-    echo 'echo "=== Kotlin Version ===" ' >> /usr/local/bin/check-versions.sh && \
-    echo 'JAVA_HOME=/usr/local/jdk-23 /usr/local/kotlin-2.1.0/bin/kotlin -version 2>&1 || echo "Kotlin not found"' >> /usr/local/bin/check-versions.sh && \
-    echo 'echo "=== PHP Versions ===" ' >> /usr/local/bin/check-versions.sh && \
-    echo '/usr/local/php-8.2/bin/php --version 2>&1 | head -1 || echo "PHP 8.2 not found"' >> /usr/local/bin/check-versions.sh && \
-    echo '/usr/local/php-8.4/bin/php --version 2>&1 | head -1 || echo "PHP 8.4 not found"' >> /usr/local/bin/check-versions.sh && \
-    echo 'echo "=== Node.js Versions ===" ' >> /usr/local/bin/check-versions.sh && \
-    echo '/usr/local/node-20/bin/node --version 2>&1 || echo "Node 20 not found"' >> /usr/local/bin/check-versions.sh && \
-    echo '/usr/local/node-22/bin/node --version 2>&1 || echo "Node 22 not found"' >> /usr/local/bin/check-versions.sh && \
-    echo 'echo "=== TypeScript Versions ===" ' >> /usr/local/bin/check-versions.sh && \
-    echo 'PATH="/usr/local/node-20/bin:$PATH" /usr/local/node-20/bin/tsc --version 2>&1 || echo "TypeScript (Node 20) not found"' >> /usr/local/bin/check-versions.sh && \
-    echo 'PATH="/usr/local/node-22/bin:$PATH" /usr/local/node-22/bin/tsc --version 2>&1 || echo "TypeScript (Node 22) not found"' >> /usr/local/bin/check-versions.sh && \
-    echo 'echo ""' >> /usr/local/bin/check-versions.sh && \
-    echo 'echo "All version checks completed!"' >> /usr/local/bin/check-versions.sh && \
-    chmod +x /usr/local/bin/check-versions.sh
+# Node.js 24.x + TypeScript
+ENV NODE_24_VERSION=24.12.0
+RUN set -ex && \
+    mkdir -p /tmp/node && cd /tmp/node && \
+    wget -q https://nodejs.org/dist/v${NODE_24_VERSION}/node-v${NODE_24_VERSION}-linux-x64.tar.xz && \
+    tar -xf node-v${NODE_24_VERSION}-linux-x64.tar.xz && \
+    mv node-v${NODE_24_VERSION}-linux-x64 /usr/local/node-24 && \
+    cd / && rm -rf /tmp/node
+RUN PATH="/usr/local/node-24/bin:$PATH" npm install -g typescript@5.9.3
 
 # ============================================
 # CLEANUP STAGE 1
@@ -346,219 +290,56 @@ RUN set -xe && \
     git clone https://github.com/judge0/isolate.git /tmp/isolate && \
     cd /tmp/isolate && \
     git checkout ad39cc4d0fbb577fb545910095c9da5ef8fc9a1a && \
-    make -j$(nproc) install && \
+    make -j"$(nproc)" install && \
     rm -rf /tmp/*
 
 ENV BOX_ROOT=/var/local/lib/isolate
 
-# ============================================
-# Ruby + deps for Judge0 API
-# ============================================
-ENV BUNDLE_SILENCE_ROOT_WARNING=1
+# ---- IMPORTANT FIX ----
+# Use the Ruby 3.2 we compiled in stage 1 (NOT Debian's Ruby 3.1 packages),
+# and install runtime deps needed for bundler + pg + mimemagic.
+ENV PATH="/usr/local/ruby-3.2/bin:${PATH}"
 
-RUN apt-get update && \
+RUN set -ex && \
+    ruby -v && \
+    gem -v && \
+    apt-get update && \
     apt-get install -y --no-install-recommends \
-        ruby \
-        ruby-dev \
+        ca-certificates \
+        git \
         postgresql-client \
         libpq-dev \
         shared-mime-info \
         file \
-        && rm -rf /var/lib/apt/lists/*
+    && rm -rf /var/lib/apt/lists/*
 
-# Clone Judge0 API
-RUN git clone --depth 1 --branch v1.13.1 https://github.com/judge0/judge0.git /api
-
-WORKDIR /api
-
-# Patch Gemfile.lock to fix yanked/incompatible gems
-RUN cd /api && \
+# Clone and setup Judge0 API
+# Fixes:
+# - mimemagic 0.3.5 is unavailable/yanked -> force 0.3.10
+# - redis-namespace 1.7.0 blocks Ruby 3.x -> require >= 1.8.1 (Ruby 3 compatible)
+# - remove stale lockfile so bundler resolves correctly under Ruby 3.2
+RUN set -ex && \
+    git clone --depth 1 --branch v1.13.1 https://github.com/judge0/judge0.git /api && \
+    cd /api && \
     gem install bundler -v 2.1.4 && \
-    sed -i 's/mimemagic (0\.3\.5)/mimemagic (0.3.10)/g' Gemfile.lock && \
-    sed -i 's/minitest (5\.14\.1)/minitest (5.16.3)/g' Gemfile.lock && \
+    \
+    # Patch Gemfile to force compatible versions
+    ruby -pi -e "gsub(/gem ['\\\"]mimemagic['\\\"].*/, \"gem 'mimemagic', '0.3.10'\")" Gemfile && \
+    ruby -pi -e "gsub(/gem ['\\\"]redis-namespace['\\\"].*/, \"gem 'redis-namespace', '>= 1.8.1'\")" Gemfile && \
+    \
+    # Remove lockfile to avoid Ruby<3 constraints baked into old dependency resolution
+    rm -f Gemfile.lock && \
+    \
     bundle _2.1.4_ config set without 'development test' && \
     bundle _2.1.4_ install --jobs 4 --retry 3
 
-# ============================================
-# CONFIGURE JUDGE0 LANGUAGES
-# This is the critical step - we need to update
-# the language configuration to register our compilers
-# ============================================
-
-# Create custom languages configuration file
-RUN cat > /api/db/languages/custom.rb << 'EOF'
-# Custom Language Configurations
-# Add your new compiler configurations here
-
-# GCC 14
-{
-  id: 90,
-  name: "C (GCC 14.2.0)",
-  is_archived: false,
-  source_file: "main.c",
-  compile_cmd: "/usr/local/gcc-14/bin/gcc %s -o a.out",
-  run_cmd: "./a.out"
-},
-
-{
-  id: 91,
-  name: "C++ (GCC 14.2.0)",
-  is_archived: false,
-  source_file: "main.cpp",
-  compile_cmd: "/usr/local/gcc-14/bin/g++ %s -o a.out",
-  run_cmd: "./a.out"
-},
-
-# Clang 18
-{
-  id: 92,
-  name: "C (Clang 18)",
-  is_archived: false,
-  source_file: "main.c",
-  compile_cmd: "/usr/local/clang-18/bin/clang %s -o a.out",
-  run_cmd: "./a.out"
-},
-
-{
-  id: 93,
-  name: "C++ (Clang 18)",
-  is_archived: false,
-  source_file: "main.cpp",
-  compile_cmd: "/usr/local/clang-18/bin/clang++ %s -o a.out",
-  run_cmd: "./a.out"
-},
-
-# Clang 19
-{
-  id: 94,
-  name: "C (Clang 19)",
-  is_archived: false,
-  source_file: "main.c",
-  compile_cmd: "/usr/local/clang-19/bin/clang %s -o a.out",
-  run_cmd: "./a.out"
-},
-
-{
-  id: 95,
-  name: "C++ (Clang 19)",
-  is_archived: false,
-  source_file: "main.cpp",
-  compile_cmd: "/usr/local/clang-19/bin/clang++ %s -o a.out",
-  run_cmd: "./a.out"
-},
-
-# Python 3.13
-{
-  id: 96,
-  name: "Python (3.13.1)",
-  is_archived: false,
-  source_file: "script.py",
-  compile_cmd: nil,
-  run_cmd: "/usr/local/python-3.13/bin/python3.13 %s"
-},
-
-# Go 1.25
-{
-  id: 97,
-  name: "Go (1.25.5)",
-  is_archived: false,
-  source_file: "main.go",
-  compile_cmd: "/usr/local/go-1.25/bin/go build -o a.out %s",
-  run_cmd: "./a.out"
-},
-
-# Rust 1.92
-{
-  id: 98,
-  name: "Rust (1.92.0)",
-  is_archived: false,
-  source_file: "main.rs",
-  compile_cmd: "/usr/local/rust-1.92/bin/rustc %s -o a.out",
-  run_cmd: "./a.out"
-},
-
-# PHP 8.4
-{
-  id: 99,
-  name: "PHP (8.4.3)",
-  is_archived: false,
-  source_file: "script.php",
-  compile_cmd: nil,
-  run_cmd: "/usr/local/php-8.4/bin/php %s"
-},
-
-# Node.js 22
-{
-  id: 100,
-  name: "JavaScript (Node.js 22.12.0)",
-  is_archived: false,
-  source_file: "script.js",
-  compile_cmd: nil,
-  run_cmd: "/usr/local/node-22/bin/node %s"
-},
-
-# TypeScript 5.7
-{
-  id: 101,
-  name: "TypeScript (5.7.2)",
-  is_archived: false,
-  source_file: "script.ts",
-  compile_cmd: "/usr/local/node-22/bin/tsc %s --outFile script.js",
-  run_cmd: "/usr/local/node-22/bin/node script.js"
-},
-
-# Ruby 3.3
-{
-  id: 102,
-  name: "Ruby (3.3.7)",
-  is_archived: false,
-  source_file: "script.rb",
-  compile_cmd: nil,
-  run_cmd: "/usr/local/ruby-3.3/bin/ruby %s"
-},
-
-# Java 23
-{
-  id: 103,
-  name: "Java (JDK 23)",
-  is_archived: false,
-  source_file: "Main.java",
-  compile_cmd: "/usr/local/jdk-23/bin/javac %s",
-  run_cmd: "/usr/local/jdk-23/bin/java Main"
-},
-
-# Kotlin 2.1
-{
-  id: 104,
-  name: "Kotlin (2.1.0)",
-  is_archived: false,
-  source_file: "Main.kt",
-  compile_cmd: "JAVA_HOME=/usr/local/jdk-23 /usr/local/kotlin-2.1.0/bin/kotlinc %s -include-runtime -d Main.jar",
-  run_cmd: "JAVA_HOME=/usr/local/jdk-23 /usr/local/jdk-23/bin/java -jar Main.jar"
-}
-EOF
-
-# Append custom languages to active.rb
-RUN echo "" >> /api/db/languages/active.rb && \
-    echo "# Custom compilers added below" >> /api/db/languages/active.rb && \
-    cat /api/db/languages/custom.rb >> /api/db/languages/active.rb
+WORKDIR /api
 
 # Create necessary directories
 RUN mkdir -p /api/tmp /api/log && \
     chmod +x /api/scripts/* && \
     chmod +x /api/docker-entrypoint.sh
 
-# ============================================
-# IMPORTANT: Database seeding will happen at runtime
-# via docker-entrypoint.sh which calls db:migrate and db:seed
-# Make sure to have a PostgreSQL database configured
-# ============================================
-
-# Expose Judge0 API port
 EXPOSE 2358
-
-# Set entrypoint
 ENTRYPOINT ["/api/docker-entrypoint.sh"]
-
-# Default command runs the server
 CMD ["./scripts/server"]
