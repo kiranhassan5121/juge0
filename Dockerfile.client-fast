@@ -2,19 +2,6 @@
 # Stage 1: Build custom compilers
 # Stage 2: Add Judge0 API application
 # Base: buildpack-deps:bookworm (Debian 12)
-#
-# Languages (23 entries):
-# - C/C++ via GCC 14/15 (source-compiled)
-# - Clang 18/19 from LLVM apt repo  
-# - Python (2.7.18, 3.11.14, 3.14.2)
-# - Java (JDK 25 from Adoptium)
-# - Go (1.25.4)
-# - Rust (1.89.0)
-# - Ruby (3.2.8, 3.4.7)
-# - Kotlin (2.3.0)
-# - PHP (8.2.30, 8.4.3)
-# - JavaScript/Node.js (22.x, 24.x)
-# - TypeScript (5.7.3, 5.9.3)
 
 # ============================================
 # STAGE 1: COMPILERS
@@ -70,7 +57,6 @@ ENV LANG=en_US.UTF-8 \
 
 # ============================================
 # GCC 14 & 15 - SOURCE COMPILED FOR REAL VERSIONS
-# WARNING: This takes 6-8 hours to build!
 # ============================================
 
 # Install build dependencies for GCC compilation
@@ -99,7 +85,7 @@ RUN cd /tmp && \
         --disable-multilib \
         --disable-bootstrap \
         --enable-checking=release && \
-    echo "Building GCC 14 (this takes 3-4 hours)..." && \
+    echo "Building GCC 14..." && \
     make -j$(nproc) && \
     make install && \
     echo "GCC 14 installed successfully!" && \
@@ -119,7 +105,7 @@ RUN cd /tmp && \
         --disable-multilib \
         --disable-bootstrap \
         --enable-checking=release && \
-    echo "Building GCC 15 (this takes 3-4 hours)..." && \
+    echo "Building GCC 15..." && \
     make -j$(nproc) && \
     make install && \
     echo "GCC 15 installed successfully!" && \
@@ -127,8 +113,6 @@ RUN cd /tmp && \
 
 # ============================================
 # LLVM/Clang 18 and 19 from LLVM apt repository
-# Note: clang-20 not yet available in Debian packages as of Jan 2026
-# Using clang-18 and clang-19 which are the latest available
 # ============================================
 RUN set -ex && \
     wget -qO- https://apt.llvm.org/llvm-snapshot.gpg.key | tee /etc/apt/trusted.gpg.d/apt.llvm.org.asc && \
@@ -136,7 +120,6 @@ RUN set -ex && \
     echo "deb http://apt.llvm.org/bookworm/ llvm-toolchain-bookworm-19 main" >> /etc/apt/sources.list && \
     apt-get update && \
     apt-get install -y clang-18 clang-19 libc++-dev libc++abi-dev && \
-    # Create symlinks for our paths (using 18 and 19 as available versions)
     mkdir -p /usr/local/clang-19/bin && \
     ln -sf /usr/bin/clang-19 /usr/local/clang-19/bin/clang && \
     ln -sf /usr/bin/clang++-19 /usr/local/clang-19/bin/clang++ && \
@@ -146,7 +129,7 @@ RUN set -ex && \
     rm -rf /var/lib/apt/lists/*
 
 # ============================================
-# Python 2.7.18 (from deadsnakes or build from source)
+# Python 2.7.18
 # ============================================
 ENV PYTHON_27_VERSION=2.7.18
 RUN set -ex && \
@@ -192,7 +175,6 @@ RUN set -ex && \
 # ============================================
 RUN set -ex && \
     mkdir -p /tmp/java && cd /tmp/java && \
-    # Try Adoptium API first
     wget -q "https://api.adoptium.net/v3/binary/latest/25/ga/linux/x64/jdk/hotspot/normal/eclipse" -O jdk.tar.gz || \
     wget -q "https://download.oracle.com/java/25/latest/jdk-25_linux-x64_bin.tar.gz" -O jdk.tar.gz && \
     tar -xf jdk.tar.gz && \
@@ -223,8 +205,7 @@ RUN set -ex && \
     cd / && rm -rf /tmp/rust
 
 # ============================================
-# Ruby 3.2.8 (for Judge0 compatibility - replaces Ruby 2.7 which is EOL)
-# Note: Ruby 2.7 requires OpenSSL < 3.0, Debian Bookworm has OpenSSL 3.x
+# Ruby 3.2.8
 # ============================================
 ENV RUBY_32_VERSION=3.2.8
 RUN set -ex && \
@@ -282,7 +263,7 @@ RUN set -ex && \
     cd / && rm -rf /tmp/php
 
 # ============================================
-# PHP 8.4.3 (latest stable, as 8.5 not yet released)
+# PHP 8.4.3
 # ============================================
 ENV PHP_84_VERSION=8.4.3
 RUN set -ex && \
@@ -301,7 +282,7 @@ RUN set -ex && \
     cd / && rm -rf /tmp/php
 
 # ============================================
-# Node.js 22.x (LTS)
+# Node.js 22.x
 # ============================================
 ENV NODE_22_VERSION=22.21.1
 RUN set -ex && \
@@ -315,7 +296,7 @@ RUN set -ex && \
 RUN PATH="/usr/local/node-22/bin:$PATH" npm install -g typescript@5.7.3
 
 # ============================================
-# Node.js 24.x (LTS)
+# Node.js 24.x
 # ============================================
 ENV NODE_24_VERSION=24.12.0
 RUN set -ex && \
@@ -383,7 +364,7 @@ FROM compilers AS final
 # Install isolate sandbox
 RUN set -xe && \
     apt-get update && \
-    apt-get install -y --no-install-recommends git libcap-dev && \
+    apt-get install -y --no-install-recommends git libcap-dev make gcc g++ && \
     rm -rf /var/lib/apt/lists/* && \
     git clone https://github.com/judge0/isolate.git /tmp/isolate && \
     cd /tmp/isolate && \
@@ -393,25 +374,35 @@ RUN set -xe && \
 
 ENV BOX_ROOT=/var/local/lib/isolate
 
-# Install Ruby for Judge0 API (using system Ruby)
+# ------------------------------------------------------------
+# Ruby + deps for Judge0 API
+# Fixes:
+#  - mimemagic 0.3.5 is yanked -> pin lock to 0.3.10
+#  - minitest 5.14.1 ruby requirement can conflict -> bump to 5.16.3
+#  - mimemagic needs shared-mime-info present
+# ------------------------------------------------------------
+ENV BUNDLE_SILENCE_ROOT_WARNING=1
+
 RUN apt-get update && \
     apt-get install -y --no-install-recommends \
         ruby \
         ruby-dev \
-        ruby-bundler \
         postgresql-client \
-        libpq-dev && \
-    rm -rf /var/lib/apt/lists/*
+        libpq-dev \
+        shared-mime-info \
+        file \
+    && rm -rf /var/lib/apt/lists/*
 
 # Clone and setup Judge0 API
-RUN git clone https://github.com/judge0/judge0.git /api && \
+RUN git clone --depth 1 --branch v1.13.1 https://github.com/judge0/judge0.git /api && \
     cd /api && \
-    git checkout v1.13.1 && \
-    # Fix mimemagic dependency issue
-    sed -i 's/mimemagic (0.3.5)/mimemagic (>= 0.3.0)/g' Gemfile.lock && \
-    sed -i 's/mimemagic (~> 0.3.0)/mimemagic (~> 0.4.0)/g' Gemfile && \
-    bundle update mimemagic && \
-    bundle install
+    gem install bundler -v 2.1.4 && \
+    # Patch lockfile to avoid yanked mimemagic + ruby constraint conflicts
+    sed -i 's/mimemagic (0\.3\.5)/mimemagic (0.3.10)/g' Gemfile.lock && \
+    sed -i 's/minitest (5\.14\.1)/minitest (5.16.3)/g' Gemfile.lock && \
+    # Install runtime gems only
+    bundle _2.1.4_ config set without 'development test' && \
+    bundle _2.1.4_ install --jobs 4 --retry 3
 
 WORKDIR /api
 
