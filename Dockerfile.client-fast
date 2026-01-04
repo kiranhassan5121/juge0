@@ -406,7 +406,11 @@ RUN apt-get update && \
 # Clone and setup Judge0 API
 RUN git clone https://github.com/judge0/judge0.git /api && \
     cd /api && \
-    git checkout v1.13.0 && \
+    git checkout v1.13.1 && \
+    # Fix mimemagic dependency issue
+    sed -i 's/mimemagic (0.3.5)/mimemagic (>= 0.3.0)/g' Gemfile.lock && \
+    sed -i 's/mimemagic (~> 0.3.0)/mimemagic (~> 0.4.0)/g' Gemfile && \
+    bundle update mimemagic && \
     bundle install
 
 WORKDIR /api
