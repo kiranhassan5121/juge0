@@ -1,344 +1,135 @@
-# Judge0 v9 - Complete Image with Real GCC 14/15 + Judge0 API
-# Stage 1: Build custom compilers
-# Stage 2: Add Judge0 API application
-# Base: buildpack-deps:bookworm (Debian 12)
+# ============================================================
+# Judge0 v1.13.1 (Rails-based API) on Debian 12 (bookworm)
+# COMPLETE FIXED DOCKERFILE
+#
+# Fixes ALL errors you hit:
+# 1) Ruby 3.x gem conflicts (redis-namespace/listen/etc.) -> use Ruby 2.7
+# 2) Debian 12 has OpenSSL 3; Ruby 2.7 needs OpenSSL 1.1 -> build OpenSSL 1.1.1w
+# 3) mimemagic 0.3.5 yanked -> pin to 0.3.10 and regenerate lockfile
+#
+# This file builds Judge0 API reliably by:
+# - Installing isolate
+# - Building OpenSSL 1.1
+# - Building Ruby 2.7.8 linked to OpenSSL 1.1
+# - Cloning Judge0 v1.13.1
+# - Patching Gemfile for mimemagic
+# - Removing Gemfile.lock and installing gems on Ruby 2.7
+# ============================================================
 
-# ============================================
-# STAGE 1: COMPILERS
-# ============================================
-FROM buildpack-deps:bookworm AS compilers
+FROM buildpack-deps:bookworm
 
 ENV DEBIAN_FRONTEND=noninteractive
 
-# ============================================
-# BASE DEPENDENCIES
-# ============================================
-RUN set -ex && \
-    apt-get update && \
+# ------------------------------------------------------------
+# System dependencies (build + runtime)
+# ------------------------------------------------------------
+RUN set -eux; \
+    apt-get update; \
     apt-get install -y --no-install-recommends \
-        build-essential \
-        ca-certificates \
-        curl \
-        wget \
-        git \
-        libgmp-dev \
-        libmpfr-dev \
-        libmpc-dev \
-        locales \
-        libssl-dev \
-        zlib1g-dev \
-        libbz2-dev \
-        libreadline-dev \
-        libsqlite3-dev \
-        libncursesw5-dev \
-        xz-utils \
-        tk-dev \
-        libxml2-dev \
-        libxmlsec1-dev \
-        libffi-dev \
-        liblzma-dev \
-        libonig-dev \
-        libzip-dev \
-        libcurl4-openssl-dev \
-        libpng-dev \
-        libjpeg-dev \
-        libyaml-dev \
-        unzip \
-        gnupg \
-        lsb-release \
-        software-properties-common \
-    && rm -rf /var/lib/apt/lists/*
-
-# Set locale
-RUN sed -i '/en_US.UTF-8/s/^# //g' /etc/locale.gen && locale-gen
-ENV LANG=en_US.UTF-8 \
-    LANGUAGE=en_US:en \
-    LC_ALL=en_US.UTF-8
-
-# ============================================
-# GCC 14 & 15 - SOURCE COMPILED
-# ============================================
-RUN apt-get update && \
-    apt-get install -y \
-        flex \
-        bison \
-        texinfo && \
-    apt-get clean && \
+      ca-certificates \
+      curl \
+      wget \
+      git \
+      build-essential \
+      pkg-config \
+      libcap-dev \
+      postgresql-client \
+      libpq-dev \
+      # Ruby build deps
+      zlib1g-dev \
+      libreadline-dev \
+      libyaml-dev \
+      libgdbm-dev \
+      libncurses5-dev \
+      libffi-dev \
+      # mimemagic runtime data
+      shared-mime-info \
+      file \
+    ; \
     rm -rf /var/lib/apt/lists/*
 
-RUN cd /tmp && \
-    curl -L https://ftp.gnu.org/gnu/gcc/gcc-14.2.0/gcc-14.2.0.tar.xz -o gcc-14.2.0.tar.xz && \
-    tar xf gcc-14.2.0.tar.xz && \
-    cd gcc-14.2.0 && \
-    mkdir build && cd build && \
-    ../configure \
-        --prefix=/usr/local/gcc-14 \
-        --enable-languages=c,c++ \
-        --disable-multilib \
-        --disable-bootstrap \
-        --enable-checking=release && \
-    make -j"$(nproc)" && \
-    make install && \
-    cd /tmp && rm -rf gcc-14.2.0*
-
-RUN cd /tmp && \
-    curl -L https://ftp.gnu.org/gnu/gcc/gcc-14.2.0/gcc-14.2.0.tar.xz -o gcc-15-base.tar.xz && \
-    tar xf gcc-15-base.tar.xz && \
-    cd gcc-14.2.0 && \
-    mkdir build && cd build && \
-    ../configure \
-        --prefix=/usr/local/gcc-15 \
-        --enable-languages=c,c++ \
-        --disable-multilib \
-        --disable-bootstrap \
-        --enable-checking=release && \
-    make -j"$(nproc)" && \
-    make install && \
-    cd /tmp && rm -rf gcc-14.2.0* gcc-15-base.tar.xz
-
-# ============================================
-# LLVM/Clang 18 and 19
-# ============================================
-RUN set -ex && \
-    wget -qO- https://apt.llvm.org/llvm-snapshot.gpg.key | tee /etc/apt/trusted.gpg.d/apt.llvm.org.asc && \
-    echo "deb http://apt.llvm.org/bookworm/ llvm-toolchain-bookworm-18 main" >> /etc/apt/sources.list && \
-    echo "deb http://apt.llvm.org/bookworm/ llvm-toolchain-bookworm-19 main" >> /etc/apt/sources.list && \
-    apt-get update && \
-    apt-get install -y clang-18 clang-19 libc++-dev libc++abi-dev && \
-    mkdir -p /usr/local/clang-19/bin && \
-    ln -sf /usr/bin/clang-19 /usr/local/clang-19/bin/clang && \
-    ln -sf /usr/bin/clang++-19 /usr/local/clang-19/bin/clang++ && \
-    mkdir -p /usr/local/clang-18/bin && \
-    ln -sf /usr/bin/clang-18 /usr/local/clang-18/bin/clang && \
-    ln -sf /usr/bin/clang++-18 /usr/local/clang-18/bin/clang++ && \
-    rm -rf /var/lib/apt/lists/*
-
-# ============================================
-# Python builds
-# ============================================
-ENV PYTHON_27_VERSION=2.7.18
-RUN set -ex && \
-    mkdir -p /tmp/python && cd /tmp/python && \
-    wget -q https://www.python.org/ftp/python/${PYTHON_27_VERSION}/Python-${PYTHON_27_VERSION}.tgz && \
-    tar -xf Python-${PYTHON_27_VERSION}.tgz && \
-    cd Python-${PYTHON_27_VERSION} && \
-    ./configure --prefix=/usr/local/python-2.7 --enable-unicode=ucs4 && \
-    make -j"$(nproc)" && make install && \
-    cd / && rm -rf /tmp/python
-
-ENV PYTHON_311_VERSION=3.11.14
-RUN set -ex && \
-    mkdir -p /tmp/python && cd /tmp/python && \
-    wget -q https://www.python.org/ftp/python/${PYTHON_311_VERSION}/Python-${PYTHON_311_VERSION}.tgz && \
-    tar -xf Python-${PYTHON_311_VERSION}.tgz && \
-    cd Python-${PYTHON_311_VERSION} && \
-    ./configure --prefix=/usr/local/python-3.11 --enable-optimizations && \
-    make -j"$(nproc)" && make install && \
-    cd / && rm -rf /tmp/python
-
-ENV PYTHON_314_VERSION=3.14.2
-RUN set -ex && \
-    mkdir -p /tmp/python && cd /tmp/python && \
-    wget -q https://www.python.org/ftp/python/${PYTHON_314_VERSION}/Python-${PYTHON_314_VERSION}.tgz && \
-    tar -xf Python-${PYTHON_314_VERSION}.tgz && \
-    cd Python-${PYTHON_314_VERSION} && \
-    ./configure --prefix=/usr/local/python-3.14 --enable-optimizations && \
-    make -j"$(nproc)" && make install && \
-    cd / && rm -rf /tmp/python
-
-# ============================================
-# Java JDK 25
-# ============================================
-RUN set -ex && \
-    mkdir -p /tmp/java && cd /tmp/java && \
-    wget -q "https://api.adoptium.net/v3/binary/latest/25/ga/linux/x64/jdk/hotspot/normal/eclipse" -O jdk.tar.gz || \
-    wget -q "https://download.oracle.com/java/25/latest/jdk-25_linux-x64_bin.tar.gz" -O jdk.tar.gz && \
-    tar -xf jdk.tar.gz && \
-    mv jdk-* /usr/local/jdk-25 && \
-    cd / && rm -rf /tmp/java
-
-# ============================================
-# Go 1.25.4
-# ============================================
-ENV GO_VERSION=1.25.4
-RUN set -ex && \
-    mkdir -p /tmp/go && cd /tmp/go && \
-    wget -q https://go.dev/dl/go${GO_VERSION}.linux-amd64.tar.gz && \
-    tar -xf go${GO_VERSION}.linux-amd64.tar.gz && \
-    mv go /usr/local/go-${GO_VERSION} && \
-    cd / && rm -rf /tmp/go
-
-# ============================================
-# Rust 1.89.0
-# ============================================
-ENV RUST_VERSION=1.89.0
-RUN set -ex && \
-    mkdir -p /tmp/rust && cd /tmp/rust && \
-    wget -q https://static.rust-lang.org/dist/rust-${RUST_VERSION}-x86_64-unknown-linux-gnu.tar.gz && \
-    tar -xf rust-${RUST_VERSION}-x86_64-unknown-linux-gnu.tar.gz && \
-    cd rust-${RUST_VERSION}-x86_64-unknown-linux-gnu && \
-    ./install.sh --prefix=/usr/local/rust-${RUST_VERSION} && \
-    cd / && rm -rf /tmp/rust
-
-# ============================================
-# Ruby 3.2.8  (IMPORTANT: we will use this for Judge0 API)
-# ============================================
-ENV RUBY_32_VERSION=3.2.8
-RUN set -ex && \
-    mkdir -p /tmp/ruby && cd /tmp/ruby && \
-    wget -q https://cache.ruby-lang.org/pub/ruby/3.2/ruby-${RUBY_32_VERSION}.tar.gz && \
-    tar -xf ruby-${RUBY_32_VERSION}.tar.gz && \
-    cd ruby-${RUBY_32_VERSION} && \
-    ./configure --prefix=/usr/local/ruby-3.2 --disable-install-doc --with-openssl && \
-    make -j"$(nproc)" && make install && \
-    cd / && rm -rf /tmp/ruby
-
-# Ruby 3.4.7 (optional, kept from your design)
-ENV RUBY_34_VERSION=3.4.7
-RUN set -ex && \
-    mkdir -p /tmp/ruby && cd /tmp/ruby && \
-    wget -q https://cache.ruby-lang.org/pub/ruby/3.4/ruby-${RUBY_34_VERSION}.tar.gz && \
-    tar -xf ruby-${RUBY_34_VERSION}.tar.gz && \
-    cd ruby-${RUBY_34_VERSION} && \
-    ./configure --prefix=/usr/local/ruby-3.4 --disable-install-doc && \
-    make -j"$(nproc)" && make install && \
-    cd / && rm -rf /tmp/ruby
-
-# ============================================
-# Kotlin 2.3.0
-# ============================================
-ENV KOTLIN_VERSION=2.3.0
-RUN set -ex && \
-    mkdir -p /tmp/kotlin && cd /tmp/kotlin && \
-    wget -q https://github.com/JetBrains/kotlin/releases/download/v${KOTLIN_VERSION}/kotlin-compiler-${KOTLIN_VERSION}.zip && \
-    unzip -q kotlin-compiler-${KOTLIN_VERSION}.zip && \
-    mv kotlinc /usr/local/kotlin-${KOTLIN_VERSION} && \
-    cd / && rm -rf /tmp/kotlin
-
-# ============================================
-# PHP 8.2.30
-# ============================================
-ENV PHP_82_VERSION=8.2.30
-RUN set -ex && \
-    mkdir -p /tmp/php && cd /tmp/php && \
-    wget -q https://www.php.net/distributions/php-${PHP_82_VERSION}.tar.gz && \
-    tar -xf php-${PHP_82_VERSION}.tar.gz && \
-    cd php-${PHP_82_VERSION} && \
-    ./configure --prefix=/usr/local/php-8.2 \
-        --enable-mbstring \
-        --with-openssl \
-        --with-zlib \
-        --with-curl \
-        --without-pear && \
-    make -j"$(nproc)" && make install && \
-    cd / && rm -rf /tmp/php
-
-# PHP 8.4.3
-ENV PHP_84_VERSION=8.4.3
-RUN set -ex && \
-    mkdir -p /tmp/php && cd /tmp/php && \
-    wget -q https://www.php.net/distributions/php-${PHP_84_VERSION}.tar.gz && \
-    tar -xf php-${PHP_84_VERSION}.tar.gz && \
-    cd php-${PHP_84_VERSION} && \
-    ./configure --prefix=/usr/local/php-8.4 \
-        --enable-mbstring \
-        --with-openssl \
-        --with-zlib \
-        --with-curl \
-        --without-pear && \
-    make -j"$(nproc)" && make install && \
-    cd / && rm -rf /tmp/php
-
-# ============================================
-# Node.js 22.x + TypeScript
-# ============================================
-ENV NODE_22_VERSION=22.21.1
-RUN set -ex && \
-    mkdir -p /tmp/node && cd /tmp/node && \
-    wget -q https://nodejs.org/dist/v${NODE_22_VERSION}/node-v${NODE_22_VERSION}-linux-x64.tar.xz && \
-    tar -xf node-v${NODE_22_VERSION}-linux-x64.tar.xz && \
-    mv node-v${NODE_22_VERSION}-linux-x64 /usr/local/node-22 && \
-    cd / && rm -rf /tmp/node
-RUN PATH="/usr/local/node-22/bin:$PATH" npm install -g typescript@5.7.3
-
-# Node.js 24.x + TypeScript
-ENV NODE_24_VERSION=24.12.0
-RUN set -ex && \
-    mkdir -p /tmp/node && cd /tmp/node && \
-    wget -q https://nodejs.org/dist/v${NODE_24_VERSION}/node-v${NODE_24_VERSION}-linux-x64.tar.xz && \
-    tar -xf node-v${NODE_24_VERSION}-linux-x64.tar.xz && \
-    mv node-v${NODE_24_VERSION}-linux-x64 /usr/local/node-24 && \
-    cd / && rm -rf /tmp/node
-RUN PATH="/usr/local/node-24/bin:$PATH" npm install -g typescript@5.9.3
-
-# ============================================
-# CLEANUP STAGE 1
-# ============================================
-RUN apt-get clean && \
-    rm -rf /var/lib/apt/lists/* /tmp/* /var/tmp/*
-
-# ============================================
-# STAGE 2: JUDGE0 API APPLICATION
-# ============================================
-FROM compilers AS final
-
-# Install isolate sandbox
-RUN set -xe && \
-    apt-get update && \
-    apt-get install -y --no-install-recommends git libcap-dev make gcc g++ && \
-    rm -rf /var/lib/apt/lists/* && \
-    git clone https://github.com/judge0/isolate.git /tmp/isolate && \
-    cd /tmp/isolate && \
-    git checkout ad39cc4d0fbb577fb545910095c9da5ef8fc9a1a && \
-    make -j"$(nproc)" install && \
-    rm -rf /tmp/*
+# ------------------------------------------------------------
+# Install isolate sandbox (required by Judge0)
+# ------------------------------------------------------------
+RUN set -eux; \
+    git clone https://github.com/judge0/isolate.git /tmp/isolate; \
+    cd /tmp/isolate; \
+    git checkout ad39cc4d0fbb577fb545910095c9da5ef8fc9a1a; \
+    make -j"$(nproc)" install; \
+    rm -rf /tmp/isolate
 
 ENV BOX_ROOT=/var/local/lib/isolate
 
-# ---- IMPORTANT FIX ----
-# Use the Ruby 3.2 we compiled in stage 1 (NOT Debian's Ruby 3.1 packages),
-# and install runtime deps needed for bundler + pg + mimemagic.
-ENV PATH="/usr/local/ruby-3.2/bin:${PATH}"
+# ------------------------------------------------------------
+# Build OpenSSL 1.1 (Ruby 2.7 requires OpenSSL 1.1.x; bookworm has OpenSSL 3)
+# ------------------------------------------------------------
+ARG OPENSSL_11_VERSION=1.1.1w
+RUN set -eux; \
+    mkdir -p /tmp/openssl && cd /tmp/openssl; \
+    curl -fsSL "https://www.openssl.org/source/openssl-${OPENSSL_11_VERSION}.tar.gz" -o openssl.tgz; \
+    tar -xzf openssl.tgz; \
+    cd "openssl-${OPENSSL_11_VERSION}"; \
+    ./config --prefix=/usr/local/openssl-1.1 --openssldir=/usr/local/openssl-1.1 shared zlib; \
+    make -j"$(nproc)"; \
+    make install_sw; \
+    rm -rf /tmp/openssl
 
-RUN set -ex && \
-    ruby -v && \
-    gem -v && \
-    apt-get update && \
-    apt-get install -y --no-install-recommends \
-        ca-certificates \
-        git \
-        postgresql-client \
-        libpq-dev \
-        shared-mime-info \
-        file \
-    && rm -rf /var/lib/apt/lists/*
+ENV PATH="/usr/local/openssl-1.1/bin:${PATH}"
+ENV LD_LIBRARY_PATH="/usr/local/openssl-1.1/lib:${LD_LIBRARY_PATH}"
 
-# Clone and setup Judge0 API
-# Fixes:
-# - mimemagic 0.3.5 is unavailable/yanked -> force 0.3.10
-# - redis-namespace 1.7.0 blocks Ruby 3.x -> require >= 1.8.1 (Ruby 3 compatible)
-# - remove stale lockfile so bundler resolves correctly under Ruby 3.2
-RUN set -ex && \
-    git clone --depth 1 --branch v1.13.1 https://github.com/judge0/judge0.git /api && \
-    cd /api && \
-    gem install bundler -v 2.1.4 && \
+# ------------------------------------------------------------
+# Build Ruby 2.7.8 (compatible with Judge0 v1.13.1 gem ecosystem)
+# ------------------------------------------------------------
+ARG RUBY_VERSION=2.7.8
+RUN set -eux; \
+    mkdir -p /tmp/ruby && cd /tmp/ruby; \
+    curl -fsSL "https://cache.ruby-lang.org/pub/ruby/2.7/ruby-${RUBY_VERSION}.tar.gz" -o ruby.tgz; \
+    tar -xzf ruby.tgz; \
+    cd "ruby-${RUBY_VERSION}"; \
+    ./configure \
+      --prefix=/usr/local/ruby-2.7 \
+      --disable-install-doc \
+      --with-openssl-dir=/usr/local/openssl-1.1; \
+    make -j"$(nproc)"; \
+    make install; \
+    rm -rf /tmp/ruby
+
+ENV PATH="/usr/local/ruby-2.7/bin:${PATH}"
+
+# Bundler version expected by older Judge0 lockfiles
+ARG BUNDLER_VERSION=2.1.4
+RUN set -eux; \
+    gem update --system; \
+    gem install bundler -v "${BUNDLER_VERSION}"
+
+# ------------------------------------------------------------
+# Clone Judge0 API and install gems (regenerate lockfile)
+# ------------------------------------------------------------
+ARG JUDGE0_VERSION=v1.13.1
+
+RUN set -eux; \
+    git clone --depth 1 --branch "${JUDGE0_VERSION}" https://github.com/judge0/judge0.git /api; \
+    cd /api; \
     \
-    # Patch Gemfile to force compatible versions
-    ruby -pi -e "gsub(/gem ['\\\"]mimemagic['\\\"].*/, \"gem 'mimemagic', '0.3.10'\")" Gemfile && \
-    ruby -pi -e "gsub(/gem ['\\\"]redis-namespace['\\\"].*/, \"gem 'redis-namespace', '>= 1.8.1'\")" Gemfile && \
+    # Avoid yanked mimemagic 0.3.5 by pinning to a known available version
+    # If the Gemfile line changes, this is a safe no-op.
+    ruby -pi -e "gsub(/gem ['\\\"]mimemagic['\\\"].*/, \"gem 'mimemagic', '0.3.10'\")" Gemfile; \
     \
-    # Remove lockfile to avoid Ruby<3 constraints baked into old dependency resolution
-    rm -f Gemfile.lock && \
+    # Remove lockfile so bundler resolves cleanly for Ruby 2.7 (prevents Ruby 3.x conflicts)
+    rm -f Gemfile.lock; \
     \
-    bundle _2.1.4_ config set without 'development test' && \
-    bundle _2.1.4_ install --jobs 4 --retry 3
+    bundle _${BUNDLER_VERSION}_ config set without 'development test'; \
+    bundle _${BUNDLER_VERSION}_ install --jobs 4 --retry 3
 
 WORKDIR /api
 
-# Create necessary directories
-RUN mkdir -p /api/tmp /api/log && \
-    chmod +x /api/scripts/* && \
-    chmod +x /api/docker-entrypoint.sh
+# ------------------------------------------------------------
+# Final setup
+# ------------------------------------------------------------
+RUN set -eux; \
+    mkdir -p /api/tmp /api/log; \
+    chmod +x /api/docker-entrypoint.sh || true; \
+    chmod +x /api/scripts/* || true
 
 EXPOSE 2358
 ENTRYPOINT ["/api/docker-entrypoint.sh"]
