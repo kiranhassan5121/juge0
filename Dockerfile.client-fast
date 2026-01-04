@@ -1,19 +1,11 @@
 # ============================================================
-# Judge0 v1.13.1 (Rails-based API) on Debian 12 (bookworm)
-# COMPLETE FIXED DOCKERFILE
+# Judge0 v1.13.1 API on Debian 12 (bookworm) - COMPLETE FIX
 #
-# Fixes ALL errors you hit:
-# 1) Ruby 3.x gem conflicts (redis-namespace/listen/etc.) -> use Ruby 2.7
-# 2) Debian 12 has OpenSSL 3; Ruby 2.7 needs OpenSSL 1.1 -> build OpenSSL 1.1.1w
-# 3) mimemagic 0.3.5 yanked -> pin to 0.3.10 and regenerate lockfile
-#
-# This file builds Judge0 API reliably by:
-# - Installing isolate
-# - Building OpenSSL 1.1
-# - Building Ruby 2.7.8 linked to OpenSSL 1.1
-# - Cloning Judge0 v1.13.1
-# - Patching Gemfile for mimemagic
-# - Removing Gemfile.lock and installing gems on Ruby 2.7
+# Fixes:
+# - Ruby 3.x gem conflicts -> use Ruby 2.7.8
+# - Ruby 2.7 needs OpenSSL 1.1 on bookworm -> build OpenSSL 1.1.1w
+# - mimemagic 0.3.5 yanked -> pin to 0.3.10 and regenerate lockfile
+# - RubyGems update failing (RubyGems 4 requires Ruby >= 3.2) -> DO NOT gem update --system
 # ============================================================
 
 FROM buildpack-deps:bookworm
@@ -21,7 +13,7 @@ FROM buildpack-deps:bookworm
 ENV DEBIAN_FRONTEND=noninteractive
 
 # ------------------------------------------------------------
-# System dependencies (build + runtime)
+# System deps
 # ------------------------------------------------------------
 RUN set -eux; \
     apt-get update; \
@@ -32,7 +24,9 @@ RUN set -eux; \
       git \
       build-essential \
       pkg-config \
+      # isolate build deps
       libcap-dev \
+      # Judge0 deps
       postgresql-client \
       libpq-dev \
       # Ruby build deps
@@ -49,7 +43,7 @@ RUN set -eux; \
     rm -rf /var/lib/apt/lists/*
 
 # ------------------------------------------------------------
-# Install isolate sandbox (required by Judge0)
+# Install isolate sandbox
 # ------------------------------------------------------------
 RUN set -eux; \
     git clone https://github.com/judge0/isolate.git /tmp/isolate; \
@@ -61,7 +55,7 @@ RUN set -eux; \
 ENV BOX_ROOT=/var/local/lib/isolate
 
 # ------------------------------------------------------------
-# Build OpenSSL 1.1 (Ruby 2.7 requires OpenSSL 1.1.x; bookworm has OpenSSL 3)
+# Build OpenSSL 1.1 (Ruby 2.7 needs this; bookworm has OpenSSL 3)
 # ------------------------------------------------------------
 ARG OPENSSL_11_VERSION=1.1.1w
 RUN set -eux; \
@@ -75,10 +69,10 @@ RUN set -eux; \
     rm -rf /tmp/openssl
 
 ENV PATH="/usr/local/openssl-1.1/bin:${PATH}"
-ENV LD_LIBRARY_PATH="/usr/local/openssl-1.1/lib:${LD_LIBRARY_PATH}"
+ENV LD_LIBRARY_PATH="/usr/local/openssl-1.1/lib"
 
 # ------------------------------------------------------------
-# Build Ruby 2.7.8 (compatible with Judge0 v1.13.1 gem ecosystem)
+# Build Ruby 2.7.8
 # ------------------------------------------------------------
 ARG RUBY_VERSION=2.7.8
 RUN set -eux; \
@@ -96,26 +90,27 @@ RUN set -eux; \
 
 ENV PATH="/usr/local/ruby-2.7/bin:${PATH}"
 
-# Bundler version expected by older Judge0 lockfiles
+# ------------------------------------------------------------
+# Install Bundler (DO NOT gem update --system on Ruby 2.7)
+# ------------------------------------------------------------
 ARG BUNDLER_VERSION=2.1.4
 RUN set -eux; \
-    gem update --system; \
+    ruby -v; \
+    gem -v; \
     gem install bundler -v "${BUNDLER_VERSION}"
 
 # ------------------------------------------------------------
-# Clone Judge0 API and install gems (regenerate lockfile)
+# Clone Judge0 API and install gems (regenerate lockfile on Ruby 2.7)
 # ------------------------------------------------------------
 ARG JUDGE0_VERSION=v1.13.1
-
 RUN set -eux; \
     git clone --depth 1 --branch "${JUDGE0_VERSION}" https://github.com/judge0/judge0.git /api; \
     cd /api; \
     \
-    # Avoid yanked mimemagic 0.3.5 by pinning to a known available version
-    # If the Gemfile line changes, this is a safe no-op.
+    # Fix yanked mimemagic 0.3.5
     ruby -pi -e "gsub(/gem ['\\\"]mimemagic['\\\"].*/, \"gem 'mimemagic', '0.3.10'\")" Gemfile; \
     \
-    # Remove lockfile so bundler resolves cleanly for Ruby 2.7 (prevents Ruby 3.x conflicts)
+    # Force new dependency resolution for Ruby 2.7
     rm -f Gemfile.lock; \
     \
     bundle _${BUNDLER_VERSION}_ config set without 'development test'; \
