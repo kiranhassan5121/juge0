@@ -2,6 +2,7 @@
 # Judge0 v1.13.1 (Rails-based API) on Debian 12 (bookworm)
 # COMPLETE FIXED DOCKERFILE
 #
+
 # Fixes ALL errors you hit:
 # 1) Ruby 3.x gem conflicts (redis-namespace/listen/etc.) -> use Ruby 2.7
 # 2) Debian 12 has OpenSSL 3; Ruby 2.7 needs OpenSSL 1.1 -> build OpenSSL 1.1.1w
