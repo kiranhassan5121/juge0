@@ -1,146 +1,361 @@
-# Use latest Debian 12 (Bookworm) buildpack as base
-FROM buildpack-deps:bookworm AS production
+# Compilers image (bookworm) with pinned language versions for Judge0-style usage
+# Focus: build correctness on Debian 12 + Ruby 2.7 OpenSSL 1.1 compatibility.
 
-# Install core build tools and library dependencies for building languages
-RUN apt-get update && apt-get install -y --no-install-recommends \
-    wget curl ca-certificates gnupg xz-utils unzip \
-    build-essential cmake ninja-build git \
-    libgmp-dev libmpfr-dev libmpc-dev libisl-dev \ 
-    libssl-dev zlib1g-dev libbz2-dev libffi-dev libreadline-dev libsqlite3-dev \
-    libncurses5-dev libncursesw5-dev libxml2-dev libxslt1-dev \
-    lsb-release apt-transport-https && \
-    rm -rf /var/lib/apt/lists/*
+FROM buildpack-deps:bookworm
 
-# --- Install Clang 19 and Clang 20 from LLVM apt repository ---
-RUN wget -O - https://apt.llvm.org/llvm-snapshot.gpg.key | apt-key add - && \
-    echo "deb http://apt.llvm.org/bookworm/ llvm-toolchain-bookworm-19 main" > /etc/apt/sources.list.d/llvm19.list && \
-    echo "deb http://apt.llvm.org/bookworm/ llvm-toolchain-bookworm-20 main" > /etc/apt/sources.list.d/llvm20.list && \
-    apt-get update && \
-    apt-get install -y --no-install-recommends clang-19 clang-20 && \
-    rm -rf /var/lib/apt/lists/*
+SHELL ["/bin/bash", "-o", "pipefail", "-c"]
 
-# Symlinks for Clang compilers to call them easily
-RUN ln -s /usr/bin/clang-19 /usr/bin/clang19 && ln -s /usr/bin/clang++-19 /usr/bin/clang++19 && \
-    ln -s /usr/bin/clang-20 /usr/bin/clang20 && ln -s /usr/bin/clang++-20 /usr/bin/clang++20
+ENV DEBIAN_FRONTEND=noninteractive
 
-# --- Build and install GCC 14.3.0 ---
-RUN wget -q https://ftp.gnu.org/gnu/gcc/gcc-14.3.0/gcc-14.3.0.tar.xz && \
-    tar -xf gcc-14.3.0.tar.xz && cd gcc-14.3.0 && \
-    ./configure --prefix=/usr/local/gcc-14 --enable-languages=c,c++ --disable-multilib && \
-    make -j$(nproc) && make install && cd / && \
-    rm -rf gcc-14.3.0 gcc-14.3.0.tar.xz
-# Create GCC 14 binary symlinks
-RUN ln -s /usr/local/gcc-14/bin/gcc /usr/bin/gcc-14 && ln -s /usr/local/gcc-14/bin/g++ /usr/bin/g++-14
+# ----------------------------
+# Versions (pin everything)
+# ----------------------------
+ARG OPENSSL_111_VERSION=1.1.1w
 
-# --- Build and install GCC 15.2.0 ---
-RUN wget -q https://ftp.gnu.org/gnu/gcc/gcc-15.2.0/gcc-15.2.0.tar.xz && \
-    tar -xf gcc-15.2.0.tar.xz && cd gcc-15.2.0 && \
-    ./configure --prefix=/usr/local/gcc-15 --enable-languages=c,c++ --disable-multilib && \
-    make -j$(nproc) && make install && cd / && \
-    rm -rf gcc-15.2.0 gcc-15.2.0.tar.xz
-# Create GCC 15 binary symlinks
-RUN ln -s /usr/local/gcc-15/bin/gcc /usr/bin/gcc-15 && ln -s /usr/local/gcc-15/bin/g++ /usr/bin/g++-15
+ARG RUBY_27_VERSION=2.7.8
+ARG RUBY_34_VERSION=3.4.7
 
-# --- Install OpenJDK 25 (JDK 25.0.1) ---
-RUN wget -q -O OpenJDK25.tar.gz "https://aka.ms/download-jdk/microsoft-jdk-25-linux-x64.tar.gz" && \
-    mkdir -p /opt/jdk-25 && tar -xf OpenJDK25.tar.gz -C /opt/jdk-25 --strip-components=1 && \
-    rm OpenJDK25.tar.gz
-# Set JAVA_HOME and update PATH
-ENV JAVA_HOME="/opt/jdk-25"
-ENV PATH="$JAVA_HOME/bin:${PATH}"
+ARG PY27_VERSION=2.7.18
+ARG PY311_VERSION=3.11.14
+ARG PY314_VERSION=3.14.2
 
-# --- Install Go 1.25.4 ---
-RUN wget -q https://go.dev/dl/go1.25.4.linux-amd64.tar.gz && \
-    tar -C /usr/local -xzf go1.25.4.linux-amd64.tar.gz && rm go1.25.4.linux-amd64.tar.gz
-# Set Go PATH
-ENV PATH="/usr/local/go/bin:${PATH}"
+ARG GCC14_VERSION=14.3.0
+ARG GCC15_VERSION=15.2.0
 
-# --- Install Rust 1.89.0 ---
-RUN curl -sSf https://sh.rustup.rs | sh -s -- -y --default-toolchain 1.89.0 && \
-    chmod -R a+w /root/.cargo /root/.rustup
-ENV PATH="/root/.cargo/bin:${PATH}"
+ARG GO_VERSION=1.25.4
+ARG RUST_VERSION=1.89.0
 
-# --- Build and install Python 2.7.18 ---
-RUN wget -q https://www.python.org/ftp/python/2.7.18/Python-2.7.18.tgz && \
-    tar -xzf Python-2.7.18.tgz && cd Python-2.7.18 && \
-    ./configure --enable-optimizations && make -j$(nproc) && make altinstall && cd / && \
-    rm -rf Python-2.7.18 Python-2.7.18.tgz
-# The above installs python2.7 executable.
+ARG KOTLIN_VERSION=2.3.0
 
-# --- Build and install Python 3.11.14 ---
-RUN wget -q https://www.python.org/ftp/python/3.11.14/Python-3.11.14.tgz && \
-    tar -xzf Python-3.11.14.tgz && cd Python-3.11.14 && \
-    ./configure --enable-optimizations && make -j$(nproc) && make altinstall && cd / && \
-    rm -rf Python-3.11.14 Python-3.11.14.tgz
-# Installs python3.11 executable.
+ARG PHP82_VERSION=8.2.30
+ARG PHP85_VERSION=8.5.1
 
-# --- Build and install Python 3.14.2 ---
-RUN wget -q https://www.python.org/ftp/python/3.14.2/Python-3.14.2.tgz && \
-    tar -xzf Python-3.14.2.tgz && cd Python-3.14.2 && \
-    ./configure --enable-optimizations && make -j$(nproc) && make altinstall && cd / && \
-    rm -rf Python-3.14.2 Python-3.14.2.tgz
-# Installs python3.14 executable.
+ARG NODE22_VERSION=22.21.1
+ARG NODE24_VERSION=24.12.0
+ARG TS22_VERSION=5.7.3
+ARG TS24_VERSION=5.9.3
 
-# --- Install PHP 8.2.30 and 8.5.1 using Sury APT repository ---
-RUN wget -qO /etc/apt/trusted.gpg.d/sury.gpg https://packages.sury.org/php/apt.gpg && \
-    echo "deb https://packages.sury.org/php/ bookworm main" > /etc/apt/sources.list.d/php.list && \
-    apt-get update && \
-    apt-get install -y --no-install-recommends php8.2-cli php8.5-cli && \
-    rm -rf /var/lib/apt/lists/*
-# This installs php8.2 and php8.5 binaries (plus needed modules).
+# JDK 25.0.1 (use OpenJDK GA tarball naming convention)
+ARG JDK25_VERSION=25.0.1
+ARG JDK25_BUILD=13
+ARG JDK25_TARBALL=openjdk-25.0.1_linux-x64_bin.tar.gz
 
-# --- Install Node.js 22.21.1 and TypeScript 5.7.3 ---
-RUN wget -q https://nodejs.org/dist/v22.21.1/node-v22.21.1-linux-x64.tar.xz && \
-    tar -xf node-v22.21.1-linux-x64.tar.xz -C /opt && mv /opt/node-v22.21.1-linux-x64 /opt/node-22.21.1 && \
-    rm node-v22.21.1-linux-x64.tar.xz
-# Add Node 22 to PATH temporarily to install TS
-ENV PATH="/opt/node-22.21.1/bin:${PATH}"
-RUN npm install -g typescript@5.7.3 && \
-    ln -s /opt/node-22.21.1/bin/node /usr/bin/node22 && ln -s /opt/node-22.21.1/bin/npm /usr/bin/npm22 && \
-    ln -s /opt/node-22.21.1/bin/tsc /usr/bin/tsc5.7
+# Clang via apt.llvm.org (bookworm)
+# NOTE: exact patch version depends on repo snapshot; we install clang-19 and clang-20 packages.
+# If you must guarantee 19.1.7 / 20.1.8 exact, you’d need to pin specific .deb versions.
+ARG LLVM_KEY_URL=https://apt.llvm.org/llvm-snapshot.gpg.key
 
-# --- Install Node.js 24.12.0 and TypeScript 5.9.3 ---
-RUN wget -q https://nodejs.org/dist/v24.12.0/node-v24.12.0-linux-x64.tar.xz && \
-    tar -xf node-v24.12.0-linux-x64.tar.xz -C /opt && mv /opt/node-v24.12.0-linux-x64 /opt/node-24.12.0 && \
-    rm node-v24.12.0-linux-x64.tar.xz
-# Add Node 24 to PATH to install TS
-ENV PATH="/opt/node-24.12.0/bin:${PATH}"
-RUN npm install -g typescript@5.9.3 && \
-    ln -s /opt/node-24.12.0/bin/node /usr/bin/node24 && ln -s /opt/node-24.12.0/bin/npm /usr/bin/npm24 && \
-    ln -s /opt/node-24.12.0/bin/tsc /usr/bin/tsc5.9
+# ----------------------------
+# Base OS deps
+# ----------------------------
+RUN set -eux; \
+  apt-get update; \
+  apt-get install -y --no-install-recommends \
+    ca-certificates curl wget git gnupg dirmngr xz-utils unzip \
+    build-essential make cmake pkg-config autoconf automake libtool \
+    bison flex gawk texinfo \
+    zlib1g-dev libbz2-dev libreadline-dev libsqlite3-dev libncursesw5-dev \
+    libffi-dev liblzma-dev tk-dev \
+    libgdbm-dev libdb-dev \
+    libyaml-dev libxml2-dev libxslt1-dev \
+    libssl-dev \
+    libcurl4-openssl-dev \
+    libpq-dev \
+    locales \
+  ; \
+  rm -rf /var/lib/apt/lists/*
 
-# Reset PATH to default (but keep Node and other additions globally accessible)
-ENV PATH="/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin"
+# Locale (helps some builds)
+RUN set -eux; \
+  sed -i '/en_US.UTF-8/s/^# //g' /etc/locale.gen; \
+  locale-gen
+ENV LANG=en_US.UTF-8 \
+    LANGUAGE=en_US:en \
+    LC_ALL=en_US.UTF-8
 
-# --- Install Kotlin 2.3.0 ---
-RUN wget -q https://github.com/JetBrains/kotlin/releases/download/v2.3.0/kotlin-compiler-2.3.0.zip && \
-    unzip kotlin-compiler-2.3.0.zip -d /opt && mv /opt/kotlinc /opt/kotlinc-2.3.0 && \
-    rm kotlin-compiler-2.3.0.zip
-# Symlinks for Kotlin compiler
-RUN ln -s /opt/kotlinc-2.3.0/bin/kotlinc /usr/bin/kotlinc && ln -s /opt/kotlinc-2.3.0/bin/kotlin /usr/bin/kotlin
+# ----------------------------
+# OpenSSL 1.1.1w (private prefix) for Ruby 2.7 + Python 2.7
+# ----------------------------
+ENV OPENSSL_111_PREFIX=/opt/openssl-1.1
+RUN set -eux; \
+  mkdir -p /tmp/openssl && cd /tmp/openssl; \
+  # Official "old 1.1.1 releases" are hosted via OpenSSL Library -> GitHub. :contentReference[oaicite:2]{index=2}
+  curl -fL \
+    "https://github.com/openssl/openssl/releases/download/OpenSSL_1_1_1w/openssl-${OPENSSL_111_VERSION}.tar.gz" \
+    -o "openssl-${OPENSSL_111_VERSION}.tar.gz"; \
+  tar -xzf "openssl-${OPENSSL_111_VERSION}.tar.gz"; \
+  cd "openssl-${OPENSSL_111_VERSION}"; \
+  ./config --prefix="${OPENSSL_111_PREFIX}" --openssldir="${OPENSSL_111_PREFIX}" shared zlib; \
+  make -j"$(nproc)"; \
+  make install_sw; \
+  echo "${OPENSSL_111_PREFIX}/lib" > /etc/ld.so.conf.d/openssl-1.1.conf; \
+  ldconfig; \
+  "${OPENSSL_111_PREFIX}/bin/openssl" version; \
+  rm -rf /tmp/openssl
 
-# --- Install Ruby 2.7.8 and 3.4.7 ---
-RUN wget -q https://cache.ruby-lang.org/pub/ruby/2.7/ruby-2.7.8.tar.gz && \
-    tar -xzf ruby-2.7.8.tar.gz && cd ruby-2.7.8 && \
-    ./configure && make -j$(nproc) && make install && cd / && \
-    rm -rf ruby-2.7.8 ruby-2.7.8.tar.gz && \
-    # After installation, 'ruby' will be 2.7 if no newer Ruby installed yet.
-    mv /usr/local/bin/ruby /usr/local/bin/ruby2.7 && mv /usr/local/bin/gem /usr/local/bin/gem2.7
+# ----------------------------
+# Ruby 2.7.8 (against OpenSSL 1.1.1w) + Ruby 3.4.7
+# ----------------------------
+# IMPORTANT:
+# - Ruby 2.7 does not support OpenSSL 3 cleanly; compile against OpenSSL 1.1. :contentReference[oaicite:3]{index=3}
+# - DO NOT gem update --system on Ruby 2.7 (rubygems-update now requires Ruby >= 3.2).
+RUN set -eux; \
+  mkdir -p /tmp/ruby && cd /tmp/ruby; \
+  curl -fL "https://cache.ruby-lang.org/pub/ruby/2.7/ruby-${RUBY_27_VERSION}.tar.gz" -o ruby-2.7.tar.gz; \
+  tar -xzf ruby-2.7.tar.gz; \
+  cd "ruby-${RUBY_27_VERSION}"; \
+  export CPPFLAGS="-I${OPENSSL_111_PREFIX}/include"; \
+  export LDFLAGS="-L${OPENSSL_111_PREFIX}/lib -Wl,-rpath,${OPENSSL_111_PREFIX}/lib"; \
+  ./configure --prefix=/usr/local/ruby-2.7 --with-openssl-dir="${OPENSSL_111_PREFIX}" --disable-install-doc; \
+  make -j"$(nproc)"; \
+  make install; \
+  /usr/local/ruby-2.7/bin/ruby -ropenssl -e 'puts OpenSSL::OPENSSL_VERSION'; \
+  /usr/local/ruby-2.7/bin/gem --version; \
+  /usr/local/ruby-2.7/bin/gem install bundler -v 2.1.4; \
+  \
+  cd /tmp/ruby; \
+  curl -fL "https://cache.ruby-lang.org/pub/ruby/3.4/ruby-${RUBY_34_VERSION}.tar.gz" -o ruby-3.4.tar.gz; \
+  tar -xzf ruby-3.4.tar.gz; \
+  cd "ruby-${RUBY_34_VERSION}"; \
+  ./configure --prefix=/usr/local/ruby-3.4 --disable-install-doc; \
+  make -j"$(nproc)"; \
+  make install; \
+  /usr/local/ruby-3.4/bin/ruby -ropenssl -e 'puts OpenSSL::OPENSSL_VERSION'; \
+  rm -rf /tmp/ruby
 
-RUN wget -q https://cache.ruby-lang.org/pub/ruby/3.4/ruby-3.4.7.tar.gz && \
-    tar -xzf ruby-3.4.7.tar.gz && cd ruby-3.4.7 && \
-    ./configure && make -j$(nproc) && make install && cd / && \
-    rm -rf ruby-3.4.7 ruby-3.4.7.tar.gz && \
-    # 'ruby' now is Ruby 3.4; keep a symlink for clarity
-    ln -sf /usr/local/bin/ruby /usr/local/bin/ruby3.4
+# ----------------------------
+# LLVM/Clang 19 + 20 via apt.llvm.org
+# ----------------------------
+RUN set -eux; \
+  wget -qO- "${LLVM_KEY_URL}" | gpg --dearmor > /usr/share/keyrings/llvm.gpg; \
+  echo "deb [signed-by=/usr/share/keyrings/llvm.gpg] http://apt.llvm.org/bookworm/ llvm-toolchain-bookworm-19 main" > /etc/apt/sources.list.d/llvm.list; \
+  echo "deb [signed-by=/usr/share/keyrings/llvm.gpg] http://apt.llvm.org/bookworm/ llvm-toolchain-bookworm-20 main" >> /etc/apt/sources.list.d/llvm.list; \
+  apt-get update; \
+  apt-get install -y --no-install-recommends clang-19 clang-20 lld-19 lld-20; \
+  rm -rf /var/lib/apt/lists/*; \
+  mkdir -p /usr/local/clang-19/bin /usr/local/clang-20/bin; \
+  ln -sf /usr/bin/clang-19 /usr/local/clang-19/bin/clang; \
+  ln -sf /usr/bin/clang++-19 /usr/local/clang-19/bin/clang++; \
+  ln -sf /usr/bin/clang-20 /usr/local/clang-20/bin/clang; \
+  ln -sf /usr/bin/clang++-20 /usr/local/clang-20/bin/clang++; \
+  /usr/local/clang-19/bin/clang --version | head -n 1; \
+  /usr/local/clang-20/bin/clang --version | head -n 1
 
-# Verify versions (this section is optional, just to output versions for debugging)
-RUN gcc-14 --version && gcc-15 --version && clang19 --version && clang20 --version && \
-    python2.7 --version && python3.11 --version && python3.14 --version && \
-    java -version && go version && rustc --version && \
-    php8.2 -v && php8.5 -v && node22 --version && node24 --version && tsc5.7 --version && tsc5.9 --version && \
-    ruby2.7 -v && ruby3.4 -v && kotlinc -version
+# ----------------------------
+# GCC 14.3.0 + 15.2.0 (source build)
+# ----------------------------
+# NOTE: this is the slowest part of the build.
+RUN set -eux; \
+  apt-get update; \
+  apt-get install -y --no-install-recommends libgmp-dev libmpfr-dev libmpc-dev; \
+  rm -rf /var/lib/apt/lists/*; \
+  \
+  mkdir -p /tmp/gcc && cd /tmp/gcc; \
+  curl -fL "https://ftp.gnu.org/gnu/gcc/gcc-${GCC14_VERSION}/gcc-${GCC14_VERSION}.tar.xz" -o gcc14.tar.xz; \
+  tar -xf gcc14.tar.xz; \
+  cd "gcc-${GCC14_VERSION}"; \
+  mkdir -p build && cd build; \
+  ../configure --prefix=/usr/local/gcc-14 --enable-languages=c,c++ --disable-multilib --disable-bootstrap --enable-checking=release; \
+  make -j"$(nproc)"; \
+  make install; \
+  /usr/local/gcc-14/bin/gcc --version | head -n 1; \
+  \
+  cd /tmp/gcc; \
+  curl -fL "https://ftp.gnu.org/gnu/gcc/gcc-${GCC15_VERSION}/gcc-${GCC15_VERSION}.tar.xz" -o gcc15.tar.xz; \
+  tar -xf gcc15.tar.xz; \
+  cd "gcc-${GCC15_VERSION}"; \
+  mkdir -p build && cd build; \
+  ../configure --prefix=/usr/local/gcc-15 --enable-languages=c,c++ --disable-multilib --disable-bootstrap --enable-checking=release; \
+  make -j"$(nproc)"; \
+  make install; \
+  /usr/local/gcc-15/bin/gcc --version | head -n 1; \
+  rm -rf /tmp/gcc
 
-# Set working directory and default command (if any) – typically, the Judge0 worker will use this image.
-WORKDIR /usr/src
-CMD ["bash"]
+# ----------------------------
+# Python 2.7.18 (against OpenSSL 1.1) + Python 3.11.14 + Python 3.14.2
+# ----------------------------
+RUN set -eux; \
+  mkdir -p /tmp/python && cd /tmp/python; \
+  curl -fL "https://www.python.org/ftp/python/${PY27_VERSION}/Python-${PY27_VERSION}.tgz" -o py27.tgz; \
+  tar -xzf py27.tgz; \
+  cd "Python-${PY27_VERSION}"; \
+  export CPPFLAGS="-I${OPENSSL_111_PREFIX}/include"; \
+  export LDFLAGS="-L${OPENSSL_111_PREFIX}/lib -Wl,-rpath,${OPENSSL_111_PREFIX}/lib"; \
+  ./configure --prefix=/usr/local/python-2.7; \
+  make -j"$(nproc)"; \
+  make install; \
+  /usr/local/python-2.7/bin/python2.7 -c "import ssl; print(ssl.OPENSSL_VERSION)"; \
+  \
+  cd /tmp/python; \
+  curl -fL "https://www.python.org/ftp/python/${PY311_VERSION}/Python-${PY311_VERSION}.tgz" -o py311.tgz; \
+  tar -xzf py311.tgz; \
+  cd "Python-${PY311_VERSION}"; \
+  ./configure --prefix=/usr/local/python-3.11; \
+  make -j"$(nproc)"; \
+  make install; \
+  /usr/local/python-3.11/bin/python3.11 --version; \
+  \
+  cd /tmp/python; \
+  curl -fL "https://www.python.org/ftp/python/${PY314_VERSION}/Python-${PY314_VERSION}.tgz" -o py314.tgz; \
+  tar -xzf py314.tgz; \
+  cd "Python-${PY314_VERSION}"; \
+  ./configure --prefix=/usr/local/python-3.14; \
+  make -j"$(nproc)"; \
+  make install; \
+  /usr/local/python-3.14/bin/python3.14 --version; \
+  rm -rf /tmp/python
+
+# ----------------------------
+# Java JDK 25.0.1
+# ----------------------------
+RUN set -eux; \
+  mkdir -p /tmp/java && cd /tmp/java; \
+  # If this URL changes, switch to Adoptium API artifacts.
+  curl -fL "https://download.java.net/java/GA/jdk${JDK25_VERSION}/${JDK25_BUILD}/GPL/${JDK25_TARBALL}" -o jdk.tar.gz; \
+  tar -xzf jdk.tar.gz; \
+  mv jdk-* /usr/local/jdk-25; \
+  /usr/local/jdk-25/bin/java -version; \
+  rm -rf /tmp/java
+ENV JAVA_HOME=/usr/local/jdk-25
+
+# ----------------------------
+# Go 1.25.4
+# ----------------------------
+RUN set -eux; \
+  mkdir -p /tmp/go && cd /tmp/go; \
+  curl -fL "https://go.dev/dl/go${GO_VERSION}.linux-amd64.tar.gz" -o go.tgz; \
+  tar -xzf go.tgz; \
+  mv go /usr/local/go-${GO_VERSION}; \
+  /usr/local/go-${GO_VERSION}/bin/go version; \
+  rm -rf /tmp/go
+
+# ----------------------------
+# Rust 1.89.0
+# ----------------------------
+RUN set -eux; \
+  mkdir -p /tmp/rust && cd /tmp/rust; \
+  curl -fL "https://static.rust-lang.org/dist/rust-${RUST_VERSION}-x86_64-unknown-linux-gnu.tar.gz" -o rust.tgz; \
+  tar -xzf rust.tgz; \
+  cd "rust-${RUST_VERSION}-x86_64-unknown-linux-gnu"; \
+  ./install.sh --prefix=/usr/local/rust-${RUST_VERSION}; \
+  /usr/local/rust-${RUST_VERSION}/bin/rustc --version; \
+  rm -rf /tmp/rust
+
+# ----------------------------
+# Kotlin 2.3.0
+# ----------------------------
+RUN set -eux; \
+  mkdir -p /tmp/kotlin && cd /tmp/kotlin; \
+  curl -fL "https://github.com/JetBrains/kotlin/releases/download/v${KOTLIN_VERSION}/kotlin-compiler-${KOTLIN_VERSION}.zip" -o kotlin.zip; \
+  unzip -q kotlin.zip; \
+  mv kotlinc /usr/local/kotlin-${KOTLIN_VERSION}; \
+  JAVA_HOME=/usr/local/jdk-25 /usr/local/kotlin-${KOTLIN_VERSION}/bin/kotlin -version; \
+  rm -rf /tmp/kotlin
+
+# ----------------------------
+# PHP 8.2.30 + PHP 8.5.1
+# ----------------------------
+RUN set -eux; \
+  apt-get update; \
+  apt-get install -y --no-install-recommends \
+    re2c \
+    libonig-dev \
+    libzip-dev \
+  ; \
+  rm -rf /var/lib/apt/lists/*; \
+  \
+  mkdir -p /tmp/php && cd /tmp/php; \
+  curl -fL "https://www.php.net/distributions/php-${PHP82_VERSION}.tar.gz" -o php82.tgz; \
+  tar -xzf php82.tgz; \
+  cd "php-${PHP82_VERSION}"; \
+  ./configure --prefix=/usr/local/php-8.2 \
+    --enable-mbstring \
+    --with-openssl \
+    --with-zlib \
+    --with-curl \
+    --without-pear; \
+  make -j"$(nproc)"; \
+  make install; \
+  /usr/local/php-8.2/bin/php --version | head -n 1; \
+  \
+  cd /tmp/php; \
+  curl -fL "https://www.php.net/distributions/php-${PHP85_VERSION}.tar.gz" -o php85.tgz; \
+  tar -xzf php85.tgz; \
+  cd "php-${PHP85_VERSION}"; \
+  ./configure --prefix=/usr/local/php-8.5 \
+    --enable-mbstring \
+    --with-openssl \
+    --with-zlib \
+    --with-curl \
+    --without-pear; \
+  make -j"$(nproc)"; \
+  make install; \
+  /usr/local/php-8.5/bin/php --version | head -n 1; \
+  rm -rf /tmp/php
+
+# ----------------------------
+# Node.js 22.21.1 + 24.12.0 + TypeScript
+# ----------------------------
+RUN set -eux; \
+  mkdir -p /tmp/node && cd /tmp/node; \
+  curl -fL "https://nodejs.org/dist/v${NODE22_VERSION}/node-v${NODE22_VERSION}-linux-x64.tar.xz" -o node22.txz; \
+  tar -xf node22.txz; \
+  mv "node-v${NODE22_VERSION}-linux-x64" /usr/local/node-22; \
+  /usr/local/node-22/bin/node --version; \
+  /usr/local/node-22/bin/npm --version; \
+  /usr/local/node-22/bin/npm install -g "typescript@${TS22_VERSION}"; \
+  /usr/local/node-22/bin/tsc --version; \
+  \
+  curl -fL "https://nodejs.org/dist/v${NODE24_VERSION}/node-v${NODE24_VERSION}-linux-x64.tar.xz" -o node24.txz; \
+  tar -xf node24.txz; \
+  mv "node-v${NODE24_VERSION}-linux-x64" /usr/local/node-24; \
+  /usr/local/node-24/bin/node --version; \
+  /usr/local/node-24/bin/npm --version; \
+  /usr/local/node-24/bin/npm install -g "typescript@${TS24_VERSION}"; \
+  /usr/local/node-24/bin/tsc --version; \
+  rm -rf /tmp/node
+
+# ----------------------------
+# Convenience: version check script
+# ----------------------------
+RUN set -eux; \
+  cat >/usr/local/bin/check-versions.sh <<'EOF'\n\
+#!/usr/bin/env bash\n\
+set -euo pipefail\n\
+echo \"=== GCC ===\"\n\
+/usr/local/gcc-14/bin/gcc --version | head -n1\n\
+/usr/local/gcc-15/bin/gcc --version | head -n1\n\
+echo \"=== Clang ===\"\n\
+/usr/local/clang-19/bin/clang --version | head -n1\n\
+/usr/local/clang-20/bin/clang --version | head -n1\n\
+echo \"=== Python ===\"\n\
+/usr/local/python-2.7/bin/python2.7 -c \"import ssl; print('2.7:', ssl.OPENSSL_VERSION)\"\n\
+/usr/local/python-3.11/bin/python3.11 --version\n\
+/usr/local/python-3.14/bin/python3.14 --version\n\
+echo \"=== Java ===\"\n\
+/usr/local/jdk-25/bin/java -version\n\
+echo \"=== Go ===\"\n\
+/usr/local/go-1.25.4/bin/go version\n\
+echo \"=== Rust ===\"\n\
+/usr/local/rust-1.89.0/bin/rustc --version\n\
+echo \"=== Ruby ===\"\n\
+/usr/local/ruby-2.7/bin/ruby -ropenssl -e 'puts \"2.7: #{OpenSSL::OPENSSL_VERSION}\"'\n\
+/usr/local/ruby-3.4/bin/ruby -ropenssl -e 'puts \"3.4: #{OpenSSL::OPENSSL_VERSION}\"'\n\
+echo \"=== Kotlin ===\"\n\
+JAVA_HOME=/usr/local/jdk-25 /usr/local/kotlin-2.3.0/bin/kotlin -version\n\
+echo \"=== PHP ===\"\n\
+/usr/local/php-8.2/bin/php --version | head -n1\n\
+/usr/local/php-8.5/bin/php --version | head -n1\n\
+echo \"=== Node/TS ===\"\n\
+/usr/local/node-22/bin/node --version\n\
+/usr/local/node-22/bin/tsc --version\n\
+/usr/local/node-24/bin/node --version\n\
+/usr/local/node-24/bin/tsc --version\n\
+echo \"OK\"\n\
+EOF\n\
+  chmod +x /usr/local/bin/check-versions.sh
+
+# Keep the image usable
+ENV PATH="/usr/local/jdk-25/bin:/usr/local/node-22/bin:/usr/local/node-24/bin:${PATH}"
+
+CMD ["/usr/local/bin/check-versions.sh"]
