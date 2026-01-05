@@ -1,131 +1,146 @@
-# ============================================================
-# Judge0 v1.13.1 API on Debian 12 (bookworm) - COMPLETE FIX
-#
-# Fixes:
-# - Ruby 3.x gem conflicts -> use Ruby 2.7.8
-# - Ruby 2.7 needs OpenSSL 1.1 on bookworm -> build OpenSSL 1.1.1w
-# - mimemagic 0.3.5 yanked -> pin to 0.3.10 and regenerate lockfile
-# - RubyGems update failing (RubyGems 4 requires Ruby >= 3.2) -> DO NOT gem update --system
-# ============================================================
+# Use latest Debian 12 (Bookworm) buildpack as base
+FROM buildpack-deps:bookworm AS production
 
-FROM buildpack-deps:bookworm
-
-ENV DEBIAN_FRONTEND=noninteractive
-
-# ------------------------------------------------------------
-# System deps
-# ------------------------------------------------------------
-RUN set -eux; \
-    apt-get update; \
-    apt-get install -y --no-install-recommends \
-      ca-certificates \
-      curl \
-      wget \
-      git \
-      build-essential \
-      pkg-config \
-      # isolate build deps
-      libcap-dev \
-      # Judge0 deps
-      postgresql-client \
-      libpq-dev \
-      # Ruby build deps
-      zlib1g-dev \
-      libreadline-dev \
-      libyaml-dev \
-      libgdbm-dev \
-      libncurses5-dev \
-      libffi-dev \
-      # mimemagic runtime data
-      shared-mime-info \
-      file \
-    ; \
+# Install core build tools and library dependencies for building languages
+RUN apt-get update && apt-get install -y --no-install-recommends \
+    wget curl ca-certificates gnupg xz-utils unzip \
+    build-essential cmake ninja-build git \
+    libgmp-dev libmpfr-dev libmpc-dev libisl-dev \ 
+    libssl-dev zlib1g-dev libbz2-dev libffi-dev libreadline-dev libsqlite3-dev \
+    libncurses5-dev libncursesw5-dev libxml2-dev libxslt1-dev \
+    lsb-release apt-transport-https && \
     rm -rf /var/lib/apt/lists/*
 
-# ------------------------------------------------------------
-# Install isolate sandbox
-# ------------------------------------------------------------
-RUN set -eux; \
-    git clone https://github.com/judge0/isolate.git /tmp/isolate; \
-    cd /tmp/isolate; \
-    git checkout ad39cc4d0fbb577fb545910095c9da5ef8fc9a1a; \
-    make -j"$(nproc)" install; \
-    rm -rf /tmp/isolate
+# --- Install Clang 19 and Clang 20 from LLVM apt repository ---
+RUN wget -O - https://apt.llvm.org/llvm-snapshot.gpg.key | apt-key add - && \
+    echo "deb http://apt.llvm.org/bookworm/ llvm-toolchain-bookworm-19 main" > /etc/apt/sources.list.d/llvm19.list && \
+    echo "deb http://apt.llvm.org/bookworm/ llvm-toolchain-bookworm-20 main" > /etc/apt/sources.list.d/llvm20.list && \
+    apt-get update && \
+    apt-get install -y --no-install-recommends clang-19 clang-20 && \
+    rm -rf /var/lib/apt/lists/*
 
-ENV BOX_ROOT=/var/local/lib/isolate
+# Symlinks for Clang compilers to call them easily
+RUN ln -s /usr/bin/clang-19 /usr/bin/clang19 && ln -s /usr/bin/clang++-19 /usr/bin/clang++19 && \
+    ln -s /usr/bin/clang-20 /usr/bin/clang20 && ln -s /usr/bin/clang++-20 /usr/bin/clang++20
 
-# ------------------------------------------------------------
-# Build OpenSSL 1.1 (Ruby 2.7 needs this; bookworm has OpenSSL 3)
-# ------------------------------------------------------------
-ARG OPENSSL_11_VERSION=1.1.1w
-RUN set -eux; \
-    mkdir -p /tmp/openssl && cd /tmp/openssl; \
-    curl -fsSL "https://www.openssl.org/source/openssl-${OPENSSL_11_VERSION}.tar.gz" -o openssl.tgz; \
-    tar -xzf openssl.tgz; \
-    cd "openssl-${OPENSSL_11_VERSION}"; \
-    ./config --prefix=/usr/local/openssl-1.1 --openssldir=/usr/local/openssl-1.1 shared zlib; \
-    make -j"$(nproc)"; \
-    make install_sw; \
-    rm -rf /tmp/openssl
+# --- Build and install GCC 14.3.0 ---
+RUN wget -q https://ftp.gnu.org/gnu/gcc/gcc-14.3.0/gcc-14.3.0.tar.xz && \
+    tar -xf gcc-14.3.0.tar.xz && cd gcc-14.3.0 && \
+    ./configure --prefix=/usr/local/gcc-14 --enable-languages=c,c++ --disable-multilib && \
+    make -j$(nproc) && make install && cd / && \
+    rm -rf gcc-14.3.0 gcc-14.3.0.tar.xz
+# Create GCC 14 binary symlinks
+RUN ln -s /usr/local/gcc-14/bin/gcc /usr/bin/gcc-14 && ln -s /usr/local/gcc-14/bin/g++ /usr/bin/g++-14
 
-ENV PATH="/usr/local/openssl-1.1/bin:${PATH}"
-ENV LD_LIBRARY_PATH="/usr/local/openssl-1.1/lib"
+# --- Build and install GCC 15.2.0 ---
+RUN wget -q https://ftp.gnu.org/gnu/gcc/gcc-15.2.0/gcc-15.2.0.tar.xz && \
+    tar -xf gcc-15.2.0.tar.xz && cd gcc-15.2.0 && \
+    ./configure --prefix=/usr/local/gcc-15 --enable-languages=c,c++ --disable-multilib && \
+    make -j$(nproc) && make install && cd / && \
+    rm -rf gcc-15.2.0 gcc-15.2.0.tar.xz
+# Create GCC 15 binary symlinks
+RUN ln -s /usr/local/gcc-15/bin/gcc /usr/bin/gcc-15 && ln -s /usr/local/gcc-15/bin/g++ /usr/bin/g++-15
 
-# ------------------------------------------------------------
-# Build Ruby 2.7.8
-# ------------------------------------------------------------
-ARG RUBY_VERSION=2.7.8
-RUN set -eux; \
-    mkdir -p /tmp/ruby && cd /tmp/ruby; \
-    curl -fsSL "https://cache.ruby-lang.org/pub/ruby/2.7/ruby-${RUBY_VERSION}.tar.gz" -o ruby.tgz; \
-    tar -xzf ruby.tgz; \
-    cd "ruby-${RUBY_VERSION}"; \
-    ./configure \
-      --prefix=/usr/local/ruby-2.7 \
-      --disable-install-doc \
-      --with-openssl-dir=/usr/local/openssl-1.1; \
-    make -j"$(nproc)"; \
-    make install; \
-    rm -rf /tmp/ruby
+# --- Install OpenJDK 25 (JDK 25.0.1) ---
+RUN wget -q -O OpenJDK25.tar.gz "https://aka.ms/download-jdk/microsoft-jdk-25-linux-x64.tar.gz" && \
+    mkdir -p /opt/jdk-25 && tar -xf OpenJDK25.tar.gz -C /opt/jdk-25 --strip-components=1 && \
+    rm OpenJDK25.tar.gz
+# Set JAVA_HOME and update PATH
+ENV JAVA_HOME="/opt/jdk-25"
+ENV PATH="$JAVA_HOME/bin:${PATH}"
 
-ENV PATH="/usr/local/ruby-2.7/bin:${PATH}"
+# --- Install Go 1.25.4 ---
+RUN wget -q https://go.dev/dl/go1.25.4.linux-amd64.tar.gz && \
+    tar -C /usr/local -xzf go1.25.4.linux-amd64.tar.gz && rm go1.25.4.linux-amd64.tar.gz
+# Set Go PATH
+ENV PATH="/usr/local/go/bin:${PATH}"
 
-# ------------------------------------------------------------
-# Install Bundler (DO NOT gem update --system on Ruby 2.7)
-# ------------------------------------------------------------
-ARG BUNDLER_VERSION=2.1.4
-RUN set -eux; \
-    ruby -v; \
-    gem -v; \
-    gem install bundler -v "${BUNDLER_VERSION}"
+# --- Install Rust 1.89.0 ---
+RUN curl -sSf https://sh.rustup.rs | sh -s -- -y --default-toolchain 1.89.0 && \
+    chmod -R a+w /root/.cargo /root/.rustup
+ENV PATH="/root/.cargo/bin:${PATH}"
 
-# ------------------------------------------------------------
-# Clone Judge0 API and install gems (regenerate lockfile on Ruby 2.7)
-# ------------------------------------------------------------
-ARG JUDGE0_VERSION=v1.13.1
-RUN set -eux; \
-    git clone --depth 1 --branch "${JUDGE0_VERSION}" https://github.com/judge0/judge0.git /api; \
-    cd /api; \
-    \
-    # Fix yanked mimemagic 0.3.5
-    ruby -pi -e "gsub(/gem ['\\\"]mimemagic['\\\"].*/, \"gem 'mimemagic', '0.3.10'\")" Gemfile; \
-    \
-    # Force new dependency resolution for Ruby 2.7
-    rm -f Gemfile.lock; \
-    \
-    bundle _${BUNDLER_VERSION}_ config set without 'development test'; \
-    bundle _${BUNDLER_VERSION}_ install --jobs 4 --retry 3
+# --- Build and install Python 2.7.18 ---
+RUN wget -q https://www.python.org/ftp/python/2.7.18/Python-2.7.18.tgz && \
+    tar -xzf Python-2.7.18.tgz && cd Python-2.7.18 && \
+    ./configure --enable-optimizations && make -j$(nproc) && make altinstall && cd / && \
+    rm -rf Python-2.7.18 Python-2.7.18.tgz
+# The above installs python2.7 executable.
 
-WORKDIR /api
+# --- Build and install Python 3.11.14 ---
+RUN wget -q https://www.python.org/ftp/python/3.11.14/Python-3.11.14.tgz && \
+    tar -xzf Python-3.11.14.tgz && cd Python-3.11.14 && \
+    ./configure --enable-optimizations && make -j$(nproc) && make altinstall && cd / && \
+    rm -rf Python-3.11.14 Python-3.11.14.tgz
+# Installs python3.11 executable.
 
-# ------------------------------------------------------------
-# Final setup
-# ------------------------------------------------------------
-RUN set -eux; \
-    mkdir -p /api/tmp /api/log; \
-    chmod +x /api/docker-entrypoint.sh || true; \
-    chmod +x /api/scripts/* || true
+# --- Build and install Python 3.14.2 ---
+RUN wget -q https://www.python.org/ftp/python/3.14.2/Python-3.14.2.tgz && \
+    tar -xzf Python-3.14.2.tgz && cd Python-3.14.2 && \
+    ./configure --enable-optimizations && make -j$(nproc) && make altinstall && cd / && \
+    rm -rf Python-3.14.2 Python-3.14.2.tgz
+# Installs python3.14 executable.
 
-EXPOSE 2358
-ENTRYPOINT ["/api/docker-entrypoint.sh"]
-CMD ["./scripts/server"]
+# --- Install PHP 8.2.30 and 8.5.1 using Sury APT repository ---
+RUN wget -qO /etc/apt/trusted.gpg.d/sury.gpg https://packages.sury.org/php/apt.gpg && \
+    echo "deb https://packages.sury.org/php/ bookworm main" > /etc/apt/sources.list.d/php.list && \
+    apt-get update && \
+    apt-get install -y --no-install-recommends php8.2-cli php8.5-cli && \
+    rm -rf /var/lib/apt/lists/*
+# This installs php8.2 and php8.5 binaries (plus needed modules).
+
+# --- Install Node.js 22.21.1 and TypeScript 5.7.3 ---
+RUN wget -q https://nodejs.org/dist/v22.21.1/node-v22.21.1-linux-x64.tar.xz && \
+    tar -xf node-v22.21.1-linux-x64.tar.xz -C /opt && mv /opt/node-v22.21.1-linux-x64 /opt/node-22.21.1 && \
+    rm node-v22.21.1-linux-x64.tar.xz
+# Add Node 22 to PATH temporarily to install TS
+ENV PATH="/opt/node-22.21.1/bin:${PATH}"
+RUN npm install -g typescript@5.7.3 && \
+    ln -s /opt/node-22.21.1/bin/node /usr/bin/node22 && ln -s /opt/node-22.21.1/bin/npm /usr/bin/npm22 && \
+    ln -s /opt/node-22.21.1/bin/tsc /usr/bin/tsc5.7
+
+# --- Install Node.js 24.12.0 and TypeScript 5.9.3 ---
+RUN wget -q https://nodejs.org/dist/v24.12.0/node-v24.12.0-linux-x64.tar.xz && \
+    tar -xf node-v24.12.0-linux-x64.tar.xz -C /opt && mv /opt/node-v24.12.0-linux-x64 /opt/node-24.12.0 && \
+    rm node-v24.12.0-linux-x64.tar.xz
+# Add Node 24 to PATH to install TS
+ENV PATH="/opt/node-24.12.0/bin:${PATH}"
+RUN npm install -g typescript@5.9.3 && \
+    ln -s /opt/node-24.12.0/bin/node /usr/bin/node24 && ln -s /opt/node-24.12.0/bin/npm /usr/bin/npm24 && \
+    ln -s /opt/node-24.12.0/bin/tsc /usr/bin/tsc5.9
+
+# Reset PATH to default (but keep Node and other additions globally accessible)
+ENV PATH="/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin"
+
+# --- Install Kotlin 2.3.0 ---
+RUN wget -q https://github.com/JetBrains/kotlin/releases/download/v2.3.0/kotlin-compiler-2.3.0.zip && \
+    unzip kotlin-compiler-2.3.0.zip -d /opt && mv /opt/kotlinc /opt/kotlinc-2.3.0 && \
+    rm kotlin-compiler-2.3.0.zip
+# Symlinks for Kotlin compiler
+RUN ln -s /opt/kotlinc-2.3.0/bin/kotlinc /usr/bin/kotlinc && ln -s /opt/kotlinc-2.3.0/bin/kotlin /usr/bin/kotlin
+
+# --- Install Ruby 2.7.8 and 3.4.7 ---
+RUN wget -q https://cache.ruby-lang.org/pub/ruby/2.7/ruby-2.7.8.tar.gz && \
+    tar -xzf ruby-2.7.8.tar.gz && cd ruby-2.7.8 && \
+    ./configure && make -j$(nproc) && make install && cd / && \
+    rm -rf ruby-2.7.8 ruby-2.7.8.tar.gz && \
+    # After installation, 'ruby' will be 2.7 if no newer Ruby installed yet.
+    mv /usr/local/bin/ruby /usr/local/bin/ruby2.7 && mv /usr/local/bin/gem /usr/local/bin/gem2.7
+
+RUN wget -q https://cache.ruby-lang.org/pub/ruby/3.4/ruby-3.4.7.tar.gz && \
+    tar -xzf ruby-3.4.7.tar.gz && cd ruby-3.4.7 && \
+    ./configure && make -j$(nproc) && make install && cd / && \
+    rm -rf ruby-3.4.7 ruby-3.4.7.tar.gz && \
+    # 'ruby' now is Ruby 3.4; keep a symlink for clarity
+    ln -sf /usr/local/bin/ruby /usr/local/bin/ruby3.4
+
+# Verify versions (this section is optional, just to output versions for debugging)
+RUN gcc-14 --version && gcc-15 --version && clang19 --version && clang20 --version && \
+    python2.7 --version && python3.11 --version && python3.14 --version && \
+    java -version && go version && rustc --version && \
+    php8.2 -v && php8.5 -v && node22 --version && node24 --version && tsc5.7 --version && tsc5.9 --version && \
+    ruby2.7 -v && ruby3.4 -v && kotlinc -version
+
+# Set working directory and default command (if any) – typically, the Judge0 worker will use this image.
+WORKDIR /usr/src
+CMD ["bash"]
