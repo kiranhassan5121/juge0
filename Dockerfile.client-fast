@@ -314,48 +314,60 @@ RUN set -eux; \
   /usr/local/node-24/bin/npm install -g "typescript@${TS24_VERSION}"; \
   /usr/local/node-24/bin/tsc --version; \
   rm -rf /tmp/node
-
 # ----------------------------
 # Convenience: version check script
 # ----------------------------
 RUN set -eux; \
-  cat >/usr/local/bin/check-versions.sh <<'EOF'\n\
-#!/usr/bin/env bash\n\
-set -euo pipefail\n\
-echo \"=== GCC ===\"\n\
-/usr/local/gcc-14/bin/gcc --version | head -n1\n\
-/usr/local/gcc-15/bin/gcc --version | head -n1\n\
-echo \"=== Clang ===\"\n\
-/usr/local/clang-19/bin/clang --version | head -n1\n\
-/usr/local/clang-20/bin/clang --version | head -n1\n\
-echo \"=== Python ===\"\n\
-/usr/local/python-2.7/bin/python2.7 -c \"import ssl; print('2.7:', ssl.OPENSSL_VERSION)\"\n\
-/usr/local/python-3.11/bin/python3.11 --version\n\
-/usr/local/python-3.14/bin/python3.14 --version\n\
-echo \"=== Java ===\"\n\
-/usr/local/jdk-25/bin/java -version\n\
-echo \"=== Go ===\"\n\
-/usr/local/go-1.25.4/bin/go version\n\
-echo \"=== Rust ===\"\n\
-/usr/local/rust-1.89.0/bin/rustc --version\n\
-echo \"=== Ruby ===\"\n\
-/usr/local/ruby-2.7/bin/ruby -ropenssl -e 'puts \"2.7: #{OpenSSL::OPENSSL_VERSION}\"'\n\
-/usr/local/ruby-3.4/bin/ruby -ropenssl -e 'puts \"3.4: #{OpenSSL::OPENSSL_VERSION}\"'\n\
-echo \"=== Kotlin ===\"\n\
-JAVA_HOME=/usr/local/jdk-25 /usr/local/kotlin-2.3.0/bin/kotlin -version\n\
-echo \"=== PHP ===\"\n\
-/usr/local/php-8.2/bin/php --version | head -n1\n\
-/usr/local/php-8.5/bin/php --version | head -n1\n\
-echo \"=== Node/TS ===\"\n\
-/usr/local/node-22/bin/node --version\n\
-/usr/local/node-22/bin/tsc --version\n\
-/usr/local/node-24/bin/node --version\n\
-/usr/local/node-24/bin/tsc --version\n\
-echo \"OK\"\n\
-EOF\n\
-  chmod +x /usr/local/bin/check-versions.sh
+  cat > /usr/local/bin/check-versions.sh <<'EOF'
+#!/usr/bin/env bash
+set -euo pipefail
+
+echo "=== GCC ==="
+/usr/local/gcc-14/bin/gcc --version | head -n1
+/usr/local/gcc-15/bin/gcc --version | head -n1
+
+echo "=== Clang ==="
+/usr/local/clang-19/bin/clang --version | head -n1
+/usr/local/clang-20/bin/clang --version | head -n1
+
+echo "=== Python ==="
+/usr/local/python-2.7/bin/python2.7 -c "import ssl; print('2.7:', ssl.OPENSSL_VERSION)"
+/usr/local/python-3.11/bin/python3.11 --version
+/usr/local/python-3.14/bin/python3.14 --version
+
+echo "=== Java ==="
+/usr/local/jdk-25/bin/java -version
+
+echo "=== Go ==="
+/usr/local/go-1.25.4/bin/go version
+
+echo "=== Rust ==="
+/usr/local/rust-1.89.0/bin/rustc --version
+
+echo "=== Ruby ==="
+/usr/local/ruby-2.7/bin/ruby -ropenssl -e 'puts "2.7: #{OpenSSL::OPENSSL_VERSION}"'
+/usr/local/ruby-3.4/bin/ruby -ropenssl -e 'puts "3.4: #{OpenSSL::OPENSSL_VERSION}"'
+
+echo "=== Kotlin ==="
+JAVA_HOME=/usr/local/jdk-25 /usr/local/kotlin-2.3.0/bin/kotlin -version
+
+echo "=== PHP ==="
+/usr/local/php-8.2/bin/php --version | head -n1
+/usr/local/php-8.5/bin/php --version | head -n1
+
+echo "=== Node/TS ==="
+/usr/local/node-22/bin/node --version
+/usr/local/node-22/bin/tsc --version
+/usr/local/node-24/bin/node --version
+/usr/local/node-24/bin/tsc --version
+
+echo "OK"
+EOF
+RUN chmod +x /usr/local/bin/check-versions.sh
 
 # Keep the image usable
 ENV PATH="/usr/local/jdk-25/bin:/usr/local/node-22/bin:/usr/local/node-24/bin:${PATH}"
+
+CMD ["/usr/local/bin/check-versions.sh"]
 
 CMD ["/usr/local/bin/check-versions.sh"]
