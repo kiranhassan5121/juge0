@@ -5,7 +5,7 @@ SHELL ["/bin/bash", "-o", "pipefail", "-c"]
 ENV DEBIAN_FRONTEND=noninteractive
 
 # ----------------------------
-# Pinned versions (your requirements)
+# Pinned versions
 # ----------------------------
 ARG GCC14_VER=14.3.0-1
 ARG GCC15_VER=15.2.0-1
@@ -20,21 +20,20 @@ ARG PY314_VER=3.14.2
 ARG JDK25_URL="https://download.java.net/java/GA/jdk25.0.1/2fbf10d8c78e40bd87641c434705079d/8/GPL/openjdk-25.0.1_linux-x64_bin.tar.gz"
 ARG JDK25_SHA256="514db33011f2c81fa9c589f7712735b42b9d2575db8f817d3be40a92d2ef7ad8"
 
-ARG GO_VER=1.25.4
-ARG RUST_VER=1.89.0
+ARG GO_VER=1.23.5
+ARG RUST_VER=1.83.0
 
 ARG RUBY27_VER=2.7.8
-ARG RUBY34_VER=3.4.7
+ARG RUBY34_VER=3.4.1
 
-ARG KOTLIN_VER=2.3.0
+ARG KOTLIN_VER=2.1.0
 
-ARG PHP82_VER=8.2.30
-ARG PHP85_VER=8.5.1
+ARG PHP82_VER=8.2.27
+ARG PHP84_VER=8.4.2
 
-ARG NODE22_VER=22.21.1
-ARG NODE24_VER=24.12.0
-ARG TS22_VER=5.7.3
-ARG TS24_VER=5.9.3
+ARG NODE22_VER=22.12.0
+ARG NODE23_VER=23.5.0
+ARG TS_VER=5.7.2
 
 # OpenSSL 1.1 for legacy runtimes (Ruby 2.7 / Python 2.7)
 ARG OPENSSL11_VER=1.1.1w
@@ -87,13 +86,13 @@ RUN set -eux; \
 RUN set -eux; \
   mkdir -p /tmp/xpack && cd /tmp/xpack; \
   curl -fL --retry 5 --retry-all-errors \
-    "https://sourceforge.net/projects/gcc-xpack/files/v${GCC14_VER}/xpack-gcc-${GCC14_VER}-linux-x64.tar.gz/download" -o gcc14.tgz; \
+    "https://github.com/xpack-dev-tools/gcc-xpack/releases/download/v${GCC14_VER}/xpack-gcc-${GCC14_VER}-linux-x64.tar.gz" -o gcc14.tgz; \
   tar -xzf gcc14.tgz -C /usr/local; \
   mv "/usr/local/xpack-gcc-${GCC14_VER}" /usr/local/gcc-14; \
   /usr/local/gcc-14/bin/gcc --version | head -n1; \
   \
   curl -fL --retry 5 --retry-all-errors \
-    "https://sourceforge.net/projects/gcc-xpack/files/v${GCC15_VER}/xpack-gcc-${GCC15_VER}-linux-x64.tar.gz/download" -o gcc15.tgz; \
+    "https://github.com/xpack-dev-tools/gcc-xpack/releases/download/v${GCC15_VER}/xpack-gcc-${GCC15_VER}-linux-x64.tar.gz" -o gcc15.tgz; \
   tar -xzf gcc15.tgz -C /usr/local; \
   mv "/usr/local/xpack-gcc-${GCC15_VER}" /usr/local/gcc-15; \
   /usr/local/gcc-15/bin/gcc --version | head -n1; \
@@ -105,13 +104,13 @@ RUN set -eux; \
 RUN set -eux; \
   mkdir -p /tmp/xpack && cd /tmp/xpack; \
   curl -fL --retry 5 --retry-all-errors \
-    "https://sourceforge.net/projects/clang-xpack/files/v${CLANG19_VER}/xpack-clang-${CLANG19_VER}-linux-x64.tar.gz/download" -o clang19.tgz; \
+    "https://github.com/xpack-dev-tools/clang-xpack/releases/download/v${CLANG19_VER}/xpack-clang-${CLANG19_VER}-linux-x64.tar.gz" -o clang19.tgz; \
   tar -xzf clang19.tgz -C /usr/local; \
   mv "/usr/local/xpack-clang-${CLANG19_VER}" /usr/local/clang-19; \
   /usr/local/clang-19/bin/clang --version | head -n1; \
   \
   curl -fL --retry 5 --retry-all-errors \
-    "https://sourceforge.net/projects/clang-xpack/files/v${CLANG20_VER}/xpack-clang-${CLANG20_VER}-linux-x64.tar.gz/download" -o clang20.tgz; \
+    "https://github.com/xpack-dev-tools/clang-xpack/releases/download/v${CLANG20_VER}/xpack-clang-${CLANG20_VER}-linux-x64.tar.gz" -o clang20.tgz; \
   tar -xzf clang20.tgz -C /usr/local; \
   mv "/usr/local/xpack-clang-${CLANG20_VER}" /usr/local/clang-20; \
   /usr/local/clang-20/bin/clang --version | head -n1; \
@@ -178,7 +177,7 @@ RUN set -eux; \
 ENV JAVA_HOME=/usr/local/jdk-25
 
 # ----------------------------
-# Go 1.25.4
+# Go 1.23.5
 # ----------------------------
 RUN set -eux; \
   mkdir -p /tmp/go && cd /tmp/go; \
@@ -190,7 +189,7 @@ RUN set -eux; \
   rm -rf /tmp/go
 
 # ----------------------------
-# Rust 1.89.0 (rustup pinned)
+# Rust 1.83.0 (rustup pinned)
 # ----------------------------
 ENV RUSTUP_HOME=/usr/local/rustup
 ENV CARGO_HOME=/usr/local/cargo
@@ -200,7 +199,7 @@ RUN set -eux; \
   "/usr/local/rust-${RUST_VER}/bin/rustc" --version
 
 # ----------------------------
-# Ruby 2.7.8 (OpenSSL 1.1) + Ruby 3.4.7
+# Ruby 2.7.8 (OpenSSL 1.1) + Ruby 3.4.1
 # ----------------------------
 RUN set -eux; \
   mkdir -p /tmp/ruby && cd /tmp/ruby; \
@@ -233,7 +232,7 @@ RUN set -eux; \
   ln -sf /usr/local/ruby-3.4/bin/gem  /usr/local/bin/gem3.4
 
 # ----------------------------
-# Kotlin 2.3.0
+# Kotlin 2.1.0
 # ----------------------------
 RUN set -eux; \
   mkdir -p /tmp/kotlin && cd /tmp/kotlin; \
@@ -242,10 +241,10 @@ RUN set -eux; \
   unzip -q kotlin.zip; \
   mv kotlinc "/usr/local/kotlin-${KOTLIN_VER}"; \
   rm -rf /tmp/kotlin
-ENV KOTLIN_HOME=/usr/local/kotlin-2.3.0
+ENV KOTLIN_HOME=/usr/local/kotlin-2.1.0
 
 # ----------------------------
-# PHP 8.2.30 and 8.5.1
+# PHP 8.2.27 and 8.4.2
 # ----------------------------
 RUN set -eux; \
   build_php() { \
@@ -268,10 +267,10 @@ RUN set -eux; \
     rm -rf /tmp/php; \
   }; \
   build_php "${PHP82_VER}" /usr/local/php-8.2; \
-  build_php "${PHP85_VER}" /usr/local/php-8.5
+  build_php "${PHP84_VER}" /usr/local/php-8.4
 
 # ----------------------------
-# Node + TypeScript (no /usr/bin/env node PATH dependency)
+# Node + TypeScript
 # ----------------------------
 RUN set -eux; \
   mkdir -p /tmp/node && cd /tmp/node; \
@@ -284,7 +283,7 @@ RUN set -eux; \
   \
   export PATH="/usr/local/node-22/bin:${PATH}"; \
   /usr/local/node-22/bin/node /usr/local/node-22/lib/node_modules/npm/bin/npm-cli.js \
-    install -g --prefix /usr/local/node-22 "typescript@${TS22_VER}"; \
+    install -g --prefix /usr/local/node-22 "typescript@${TS_VER}"; \
   for f in npm npx corepack tsc tsserver; do \
     if [ -e "/usr/local/node-22/bin/${f}" ]; then \
       tgt="$(readlink -f "/usr/local/node-22/bin/${f}" || true)"; \
@@ -297,79 +296,32 @@ RUN set -eux; \
   ln -sf /usr/local/node-22/bin/npm  /usr/local/bin/npm22; \
   \
   curl -fL --retry 5 --retry-all-errors \
-    "https://nodejs.org/dist/v${NODE24_VER}/node-v${NODE24_VER}-linux-x64.tar.xz" -o node24.txz; \
-  tar -xJf node24.txz; \
-  mv "node-v${NODE24_VER}-linux-x64" /usr/local/node-24; \
-  /usr/local/node-24/bin/node --version; \
+    "https://nodejs.org/dist/v${NODE23_VER}/node-v${NODE23_VER}-linux-x64.tar.xz" -o node23.txz; \
+  tar -xJf node23.txz; \
+  mv "node-v${NODE23_VER}-linux-x64" /usr/local/node-23; \
+  /usr/local/node-23/bin/node --version; \
   \
-  export PATH="/usr/local/node-24/bin:${PATH}"; \
-  /usr/local/node-24/bin/node /usr/local/node-24/lib/node_modules/npm/bin/npm-cli.js \
-    install -g --prefix /usr/local/node-24 "typescript@${TS24_VER}"; \
+  export PATH="/usr/local/node-23/bin:${PATH}"; \
+  /usr/local/node-23/bin/node /usr/local/node-23/lib/node_modules/npm/bin/npm-cli.js \
+    install -g --prefix /usr/local/node-23 "typescript@${TS_VER}"; \
   for f in npm npx corepack tsc tsserver; do \
-    if [ -e "/usr/local/node-24/bin/${f}" ]; then \
-      tgt="$(readlink -f "/usr/local/node-24/bin/${f}" || true)"; \
-      [ -n "${tgt}" ] || tgt="/usr/local/node-24/bin/${f}"; \
-      sed -i '1 s|^#!/usr/bin/env node|#!/usr/local/node-24/bin/node|' "${tgt}" || true; \
+    if [ -e "/usr/local/node-23/bin/${f}" ]; then \
+      tgt="$(readlink -f "/usr/local/node-23/bin/${f}" || true)"; \
+      [ -n "${tgt}" ] || tgt="/usr/local/node-23/bin/${f}"; \
+      sed -i '1 s|^#!/usr/bin/env node|#!/usr/local/node-23/bin/node|' "${tgt}" || true; \
     fi; \
   done; \
-  /usr/local/node-24/bin/tsc --version; \
-  ln -sf /usr/local/node-24/bin/node /usr/local/bin/node24; \
-  ln -sf /usr/local/node-24/bin/npm  /usr/local/bin/npm24; \
+  /usr/local/node-23/bin/tsc --version; \
+  ln -sf /usr/local/node-23/bin/node /usr/local/bin/node23; \
+  ln -sf /usr/local/node-23/bin/npm  /usr/local/bin/npm23; \
   \
   rm -rf /tmp/node
 
 # ----------------------------
-# Version check script (THIS IS WHERE YOUR PARSE ERROR WAS)
+# Version check script
 # ----------------------------
-RUN cat > /usr/local/bin/check-versions.sh <<'EOF'
-#!/usr/bin/env bash
-set -euo pipefail
-
-echo "=== GCC ==="
- /usr/local/gcc-14/bin/gcc --version | head -n1
- /usr/local/gcc-15/bin/gcc --version | head -n1
-
-echo "=== Clang ==="
- /usr/local/clang-19/bin/clang --version | head -n1
- /usr/local/clang-20/bin/clang --version | head -n1
-
-echo "=== Python ==="
- /usr/local/python-2.7/bin/python2.7 --version
- /usr/local/python-2.7/bin/python2.7 -c "import ssl; print('2.7 ssl:', ssl.OPENSSL_VERSION)"
- /usr/local/python-3.11/bin/python3.11 --version
- /usr/local/python-3.14/bin/python3.14 --version
-
-echo "=== Java ==="
- /usr/local/jdk-25/bin/java -version
-
-echo "=== Go ==="
- /usr/local/go-1.25.4/bin/go version
-
-echo "=== Rust ==="
- /usr/local/rust-1.89.0/bin/rustc --version
-
-echo "=== Ruby ==="
- /usr/local/ruby-2.7/bin/ruby -v
- /usr/local/ruby-3.4/bin/ruby -v
-
-echo "=== Kotlin ==="
- JAVA_HOME=/usr/local/jdk-25 /usr/local/kotlin-2.3.0/bin/kotlin -version
-
-echo "=== PHP ==="
- /usr/local/php-8.2/bin/php --version | head -n1
- /usr/local/php-8.5/bin/php --version | head -n1
-
-echo "=== Node/TS ==="
- /usr/local/node-22/bin/node --version
- /usr/local/node-22/bin/tsc --version
- /usr/local/node-24/bin/node --version
- /usr/local/node-24/bin/tsc --version
-
-echo "OK"
-EOF
-
-# ✅ IMPORTANT: chmod must be inside RUN (this fixes your current failure)
-RUN chmod +x /usr/local/bin/check-versions.sh
+RUN printf '#!/usr/bin/env bash\nset -euo pipefail\n\necho "=== GCC ==="\n/usr/local/gcc-14/bin/gcc --version | head -n1\n/usr/local/gcc-15/bin/gcc --version | head -n1\n\necho "=== Clang ==="\n/usr/local/clang-19/bin/clang --version | head -n1\n/usr/local/clang-20/bin/clang --version | head -n1\n\necho "=== Python ==="\n/usr/local/python-2.7/bin/python2.7 --version\n/usr/local/python-2.7/bin/python2.7 -c "import ssl; print('\''2.7 ssl:'\'', ssl.OPENSSL_VERSION)"\n/usr/local/python-3.11/bin/python3.11 --version\n/usr/local/python-3.14/bin/python3.14 --version\n\necho "=== Java ==="\n/usr/local/jdk-25/bin/java -version\n\necho "=== Go ==="\n/usr/local/go-%s/bin/go version\n\necho "=== Rust ==="\n/usr/local/rust-%s/bin/rustc --version\n\necho "=== Ruby ==="\n/usr/local/ruby-2.7/bin/ruby -v\n/usr/local/ruby-3.4/bin/ruby -v\n\necho "=== Kotlin ==="\nJAVA_HOME=/usr/local/jdk-25 /usr/local/kotlin-%s/bin/kotlin -version\n\necho "=== PHP ==="\n/usr/local/php-8.2/bin/php --version | head -n1\n/usr/local/php-8.4/bin/php --version | head -n1\n\necho "=== Node/TS ==="\n/usr/local/node-22/bin/node --version\n/usr/local/node-22/bin/tsc --version\n/usr/local/node-23/bin/node --version\n/usr/local/node-23/bin/tsc --version\n\necho "OK"\n' "${GO_VER}" "${RUST_VER}" "${KOTLIN_VER}" > /usr/local/bin/check-versions.sh && \
+  chmod +x /usr/local/bin/check-versions.sh
 
 # Fail fast in CI
 RUN /usr/local/bin/check-versions.sh
