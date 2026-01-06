@@ -5,7 +5,7 @@ SHELL ["/bin/bash", "-o", "pipefail", "-c"]
 ENV DEBIAN_FRONTEND=noninteractive
 
 # ----------------------------
-# Pinned versions
+# Pinned versions (verified available)
 # ----------------------------
 ARG GCC14_VER=14.3.0-1
 ARG GCC15_VER=15.2.0-1
@@ -24,7 +24,7 @@ ARG GO_VER=1.23.5
 ARG RUST_VER=1.83.0
 
 ARG RUBY27_VER=2.7.8
-ARG RUBY34_VER=3.4.1
+ARG RUBY34_VER=3.4.8
 
 ARG KOTLIN_VER=2.1.0
 
@@ -39,7 +39,7 @@ ARG TS_VER=5.7.2
 ARG OPENSSL11_VER=1.1.1w
 
 # ----------------------------
-# OS deps for building languages
+# OS deps for building languages (INCLUDING locales!)
 # ----------------------------
 RUN set -eux; \
   apt-get update; \
@@ -54,6 +54,7 @@ RUN set -eux; \
     libgdbm-dev libgdbm-compat-dev libyaml-dev \
     libxml2-dev libcurl4-openssl-dev libonig-dev libzip-dev \
     patch \
+    locales \
   ; \
   rm -rf /var/lib/apt/lists/*
 
@@ -69,7 +70,7 @@ ENV LANG=en_US.UTF-8 LC_ALL=en_US.UTF-8
 RUN set -eux; \
   mkdir -p /tmp/openssl && cd /tmp/openssl; \
   curl -fL --retry 5 --retry-all-errors \
-    "https://openssl-library.org/source/old/1.1.1/openssl-${OPENSSL11_VER}.tar.gz" -o openssl.tgz; \
+    "https://www.openssl.org/source/old/1.1.1/openssl-${OPENSSL11_VER}.tar.gz" -o openssl.tgz; \
   tar -xzf openssl.tgz; \
   cd "openssl-${OPENSSL11_VER}"; \
   ./config --prefix=/opt/openssl-1.1 --openssldir=/opt/openssl-1.1 shared zlib; \
@@ -199,7 +200,7 @@ RUN set -eux; \
   "/usr/local/rust-${RUST_VER}/bin/rustc" --version
 
 # ----------------------------
-# Ruby 2.7.8 (OpenSSL 1.1) + Ruby 3.4.1
+# Ruby 2.7.8 (OpenSSL 1.1) + Ruby 3.4.8
 # ----------------------------
 RUN set -eux; \
   mkdir -p /tmp/ruby && cd /tmp/ruby; \
