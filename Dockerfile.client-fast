@@ -1,47 +1,30 @@
 # syntax=docker/dockerfile:1.6
-#
-# Single-image Judge0-style build with upgraded language toolchains.
-# Focus: "docker build should pass" + pinned versions + fix Ruby2.7/OpenSSL + fix JDK URL + fix heredocs.
-#
-# NOTE: This builds a "toolchains + smoke-check" image. You can use it as your new compilers base
-# (then update Judge0 main repo to FROM this image).
-#
-# Verified sources used:
-# - Microsoft Build of OpenJDK 25.0.1 download link (stable)  :contentReference[oaicite:2]{index=2}
-# - xPack GCC (14.3.0-1 / 15.2.0-1)                           
-# - xPack Clang/LLVM (19.1.7-1 / 20.1.8-1)                    :contentReference[oaicite:4]{index=4}
-# - Node dist archives are published on nodejs.org            :contentReference[oaicite:5]{index=5}
-# - Go downloads on go.dev                                    :contentReference[oaicite:6]{index=6}
-# - GCC releases exist on gcc.gnu.org / ftp.gnu.org           :contentReference[oaicite:7]{index=7}
-# - Rust 1.89.0 release info                                  :contentReference[oaicite:8]{index=8}
-#
-# If you later want to build the actual Judge0 API container too, use this image as base in Judge0's Dockerfile.
-
 FROM buildpack-deps:bookworm
 
 SHELL ["/bin/bash", "-o", "pipefail", "-c"]
 ENV DEBIAN_FRONTEND=noninteractive
 
 # ----------------------------
-# Versions (as per your requirement list)
+# Pinned versions (your requirements)
 # ----------------------------
-ARG GCC14_XPACK_VER=14.3.0-1
-ARG GCC15_XPACK_VER=15.2.0-1
-ARG CLANG19_XPACK_VER=19.1.7-1
-ARG CLANG20_XPACK_VER=20.1.8-1
+ARG GCC14_VER=14.3.0-1
+ARG GCC15_VER=15.2.0-1
+ARG CLANG19_VER=19.1.7-1
+ARG CLANG20_VER=20.1.8-1
 
 ARG PY27_VER=2.7.18
 ARG PY311_VER=3.11.14
 ARG PY314_VER=3.14.2
 
-ARG JDK_MS_URL=https://aka.ms/download-jdk/microsoft-jdk-25.0.1-linux-x64.tar.gz
+# JDK 25.0.1 direct URL + SHA256 from jdk.java.net
+ARG JDK25_URL="https://download.java.net/java/GA/jdk25.0.1/2fbf10d8c78e40bd87641c434705079d/8/GPL/openjdk-25.0.1_linux-x64_bin.tar.gz"
+ARG JDK25_SHA256="514db33011f2c81c692f7c5e86eea793bd6cb3a39bd2b22b0345ee06b1b7966c"
 
 ARG GO_VER=1.25.4
 ARG RUST_VER=1.89.0
 
 ARG RUBY27_VER=2.7.8
 ARG RUBY34_VER=3.4.7
-ARG BUNDLER27_VER=2.1.4
 
 ARG KOTLIN_VER=2.3.0
 
@@ -53,68 +36,41 @@ ARG NODE24_VER=24.12.0
 ARG TS22_VER=5.7.3
 ARG TS24_VER=5.9.3
 
-# OpenSSL 1.1.1 is required for Ruby 2.7 on Debian 12 (OpenSSL 3 is default).
+# OpenSSL 1.1 for legacy runtimes (Ruby 2.7 / Python 2.7)
 ARG OPENSSL11_VER=1.1.1w
 
 # ----------------------------
-# Base packages
+# OS deps for building languages
 # ----------------------------
 RUN set -eux; \
   apt-get update; \
   apt-get install -y --no-install-recommends \
-    ca-certificates curl wget xz-utils unzip zip git \
-    build-essential make pkg-config autoconf bison re2c \
-    libffi-dev libgdbm-dev libncurses5-dev libreadline-dev libyaml-dev zlib1g-dev \
-    libbz2-dev liblzma-dev libsqlite3-dev libssl-dev \
-    libxml2-dev libcurl4-openssl-dev libonig-dev libzip-dev libsodium-dev \
-    shared-mime-info \
+    ca-certificates curl wget git \
+    xz-utils unzip zip \
+    build-essential make pkg-config \
+    bison autoconf automake libtool \
+    libssl-dev zlib1g-dev \
+    libbz2-dev libreadline-dev libsqlite3-dev \
+    libncursesw5-dev libffi-dev liblzma-dev tk-dev \
+    libgdbm-dev libgdbm-compat-dev libyaml-dev \
+    libxml2-dev libcurl4-openssl-dev libonig-dev libzip-dev \
+    patch \
   ; \
   rm -rf /var/lib/apt/lists/*
 
-# ----------------------------
-# Install xPack GCC toolchains (fast, pinned)
-# ----------------------------
+# Locale (some toolchains/tests expect UTF-8)
 RUN set -eux; \
-  mkdir -p /tmp/xpack /usr/local/gcc-14 /usr/local/gcc-15; \
-  curl -fL "https://downloads.sourceforge.net/project/gcc-xpack/v${GCC14_XPACK_VER}/xpack-gcc-${GCC14_XPACK_VER}-linux-x64.tar.gz" -o /tmp/xpack/gcc14.tgz; \
-  curl -fL "https://downloads.sourceforge.net/project/gcc-xpack/v${GCC15_XPACK_VER}/xpack-gcc-${GCC15_XPACK_VER}-linux-x64.tar.gz" -o /tmp/xpack/gcc15.tgz; \
-  tar -xzf /tmp/xpack/gcc14.tgz -C /tmp/xpack; \
-  tar -xzf /tmp/xpack/gcc15.tgz -C /tmp/xpack; \
-  mv /tmp/xpack/xpack-gcc-${GCC14_XPACK_VER}/* /usr/local/gcc-14/; \
-  mv /tmp/xpack/xpack-gcc-${GCC15_XPACK_VER}/* /usr/local/gcc-15/; \
-  ln -sf /usr/local/gcc-14/bin/gcc /usr/local/bin/gcc-14; \
-  ln -sf /usr/local/gcc-14/bin/g++ /usr/local/bin/g++-14; \
-  ln -sf /usr/local/gcc-15/bin/gcc /usr/local/bin/gcc-15; \
-  ln -sf /usr/local/gcc-15/bin/g++ /usr/local/bin/g++-15; \
-  /usr/local/gcc-14/bin/gcc --version | head -n1; \
-  /usr/local/gcc-15/bin/gcc --version | head -n1; \
-  rm -rf /tmp/xpack
+  sed -i 's/^# *\(en_US.UTF-8 UTF-8\)/\1/' /etc/locale.gen; \
+  locale-gen
+ENV LANG=en_US.UTF-8 LC_ALL=en_US.UTF-8
 
 # ----------------------------
-# Install xPack Clang toolchains (fast, pinned)
-# ----------------------------
-RUN set -eux; \
-  mkdir -p /tmp/xpack /usr/local/clang-19 /usr/local/clang-20; \
-  curl -fL "https://downloads.sourceforge.net/project/clang-xpack/v${CLANG19_XPACK_VER}/xpack-clang-${CLANG19_XPACK_VER}-linux-x64.tar.gz" -o /tmp/xpack/clang19.tgz; \
-  curl -fL "https://downloads.sourceforge.net/project/clang-xpack/v${CLANG20_XPACK_VER}/xpack-clang-${CLANG20_XPACK_VER}-linux-x64.tar.gz" -o /tmp/xpack/clang20.tgz; \
-  tar -xzf /tmp/xpack/clang19.tgz -C /tmp/xpack; \
-  tar -xzf /tmp/xpack/clang20.tgz -C /tmp/xpack; \
-  mv /tmp/xpack/xpack-clang-${CLANG19_XPACK_VER}/* /usr/local/clang-19/; \
-  mv /tmp/xpack/xpack-clang-${CLANG20_XPACK_VER}/* /usr/local/clang-20/; \
-  ln -sf /usr/local/clang-19/bin/clang /usr/local/bin/clang-19; \
-  ln -sf /usr/local/clang-19/bin/clang++ /usr/local/bin/clang++-19; \
-  ln -sf /usr/local/clang-20/bin/clang /usr/local/bin/clang-20; \
-  ln -sf /usr/local/clang-20/bin/clang++ /usr/local/bin/clang++-20; \
-  /usr/local/clang-19/bin/clang --version | head -n1; \
-  /usr/local/clang-20/bin/clang --version | head -n1; \
-  rm -rf /tmp/xpack
-
-# ----------------------------
-# OpenSSL 1.1.1w (for Ruby 2.7 + Python 2.7 SSL)
+# OpenSSL 1.1.1w (needed for Ruby 2.7 and Python 2.7)
 # ----------------------------
 RUN set -eux; \
   mkdir -p /tmp/openssl && cd /tmp/openssl; \
-  curl -fL "https://www.openssl.org/source/openssl-${OPENSSL11_VER}.tar.gz" -o openssl.tgz; \
+  curl -fL "https://www.openssl.org/source/old/1.1.1/openssl-${OPENSSL11_VER}.tar.gz" -o openssl.tgz \
+    || curl -fL "https://openssl-library.org/source/old/1.1.1/openssl-${OPENSSL11_VER}.tar.gz" -o openssl.tgz; \
   tar -xzf openssl.tgz; \
   cd "openssl-${OPENSSL11_VER}"; \
   ./config --prefix=/opt/openssl-1.1 --openssldir=/opt/openssl-1.1 shared zlib; \
@@ -122,65 +78,98 @@ RUN set -eux; \
   make install_sw; \
   echo "/opt/openssl-1.1/lib" > /etc/ld.so.conf.d/openssl-1.1.conf; \
   ldconfig; \
+  /opt/openssl-1.1/bin/openssl version; \
   rm -rf /tmp/openssl
 
-# Ensure runtime loader sees OpenSSL 1.1 for Ruby2.7-linked binaries
-ENV LD_LIBRARY_PATH=/opt/openssl-1.1/lib:${LD_LIBRARY_PATH}
+# ----------------------------
+# GCC xPack 14.3.0 + 15.2.0
+# ----------------------------
+RUN set -eux; \
+  mkdir -p /tmp/xpack && cd /tmp/xpack; \
+  curl -fL "https://sourceforge.net/projects/gcc-xpack/files/v${GCC14_VER}/xpack-gcc-${GCC14_VER}-linux-x64.tar.gz/download" -o gcc14.tgz; \
+  tar -xzf gcc14.tgz -C /usr/local; \
+  mv "/usr/local/xpack-gcc-${GCC14_VER}" /usr/local/gcc-14; \
+  /usr/local/gcc-14/bin/gcc --version | head -n1; \
+  \
+  curl -fL "https://sourceforge.net/projects/gcc-xpack/files/v${GCC15_VER}/xpack-gcc-${GCC15_VER}-linux-x64.tar.gz/download" -o gcc15.tgz; \
+  tar -xzf gcc15.tgz -C /usr/local; \
+  mv "/usr/local/xpack-gcc-${GCC15_VER}" /usr/local/gcc-15; \
+  /usr/local/gcc-15/bin/gcc --version | head -n1; \
+  rm -rf /tmp/xpack
 
 # ----------------------------
-# Python 2.7.18 / 3.11.14 / 3.14.2 (from source, pinned)
+# Clang xPack 19.1.7 + 20.1.8
+# ----------------------------
+RUN set -eux; \
+  mkdir -p /tmp/xpack && cd /tmp/xpack; \
+  curl -fL "https://sourceforge.net/projects/clang-xpack/files/v${CLANG19_VER}/xpack-clang-${CLANG19_VER}-linux-x64.tar.gz/download" -o clang19.tgz; \
+  tar -xzf clang19.tgz -C /usr/local; \
+  mv "/usr/local/xpack-clang-${CLANG19_VER}" /usr/local/clang-19; \
+  /usr/local/clang-19/bin/clang --version | head -n1; \
+  \
+  curl -fL "https://sourceforge.net/projects/clang-xpack/files/v${CLANG20_VER}/xpack-clang-${CLANG20_VER}-linux-x64.tar.gz/download" -o clang20.tgz; \
+  tar -xzf clang20.tgz -C /usr/local; \
+  mv "/usr/local/xpack-clang-${CLANG20_VER}" /usr/local/clang-20; \
+  /usr/local/clang-20/bin/clang --version | head -n1; \
+  rm -rf /tmp/xpack
+
+# ----------------------------
+# Python 2.7.18 (linked against OpenSSL 1.1)
 # ----------------------------
 RUN set -eux; \
   mkdir -p /tmp/python && cd /tmp/python; \
-  curl -fL "https://www.python.org/ftp/python/${PY27_VER}/Python-${PY27_VER}.tgz" -o py27.tgz; \
-  tar -xzf py27.tgz; \
+  curl -fL "https://www.python.org/ftp/python/${PY27_VER}/Python-${PY27_VER}.tgz" -o py.tgz; \
+  tar -xzf py.tgz; \
   cd "Python-${PY27_VER}"; \
-  # Python 2.7 needs OpenSSL 1.1 on Debian 12:
-  CPPFLAGS="-I/opt/openssl-1.1/include" LDFLAGS="-L/opt/openssl-1.1/lib" \
+  CPPFLAGS="-I/opt/openssl-1.1/include" \
+  LDFLAGS="-L/opt/openssl-1.1/lib -Wl,-rpath,/opt/openssl-1.1/lib" \
     ./configure --prefix=/usr/local/python-2.7 --enable-unicode=ucs4; \
   make -j"$(nproc)"; \
   make install; \
-  ln -sf /usr/local/python-2.7/bin/python2.7 /usr/local/bin/python2.7; \
-  /usr/local/python-2.7/bin/python2.7 -c "import ssl; print(ssl.OPENSSL_VERSION)"; \
-  cd /tmp/python; rm -rf "Python-${PY27_VER}"
-
-RUN set -eux; \
-  mkdir -p /tmp/python && cd /tmp/python; \
-  curl -fL "https://www.python.org/ftp/python/${PY311_VER}/Python-${PY311_VER}.tgz" -o py311.tgz; \
-  tar -xzf py311.tgz; \
-  cd "Python-${PY311_VER}"; \
-  ./configure --prefix=/usr/local/python-3.11 --enable-optimizations --with-ensurepip=install; \
-  make -j"$(nproc)"; \
-  make install; \
-  ln -sf /usr/local/python-3.11/bin/python3.11 /usr/local/bin/python3.11; \
-  /usr/local/python-3.11/bin/python3.11 --version; \
-  cd /tmp/python; rm -rf "Python-${PY311_VER}"
-
-RUN set -eux; \
-  mkdir -p /tmp/python && cd /tmp/python; \
-  curl -fL "https://www.python.org/ftp/python/${PY314_VER}/Python-${PY314_VER}.tgz" -o py314.tgz; \
-  tar -xzf py314.tgz; \
-  cd "Python-${PY314_VER}"; \
-  ./configure --prefix=/usr/local/python-3.14 --enable-optimizations --with-ensurepip=install; \
-  make -j"$(nproc)"; \
-  make install; \
-  ln -sf /usr/local/python-3.14/bin/python3.14 /usr/local/bin/python3.14; \
-  /usr/local/python-3.14/bin/python3.14 --version; \
-  cd /tmp/python; rm -rf "Python-${PY314_VER}" /tmp/python
+  /usr/local/python-2.7/bin/python2.7 -c "import ssl; import sys; print(sys.version.split()[0]); print(ssl.OPENSSL_VERSION)"; \
+  rm -rf /tmp/python
 
 # ----------------------------
-# Java (Microsoft OpenJDK 25.0.1 – stable download)
+# Python 3.11.14
+# ----------------------------
+RUN set -eux; \
+  mkdir -p /tmp/python && cd /tmp/python; \
+  curl -fL "https://www.python.org/ftp/python/${PY311_VER}/Python-${PY311_VER}.tgz" -o py.tgz; \
+  tar -xzf py.tgz; \
+  cd "Python-${PY311_VER}"; \
+  ./configure --prefix=/usr/local/python-3.11; \
+  make -j"$(nproc)"; \
+  make install; \
+  /usr/local/python-3.11/bin/python3.11 --version; \
+  rm -rf /tmp/python
+
+# ----------------------------
+# Python 3.14.2
+# ----------------------------
+RUN set -eux; \
+  mkdir -p /tmp/python && cd /tmp/python; \
+  curl -fL "https://www.python.org/ftp/python/${PY314_VER}/Python-${PY314_VER}.tgz" -o py.tgz; \
+  tar -xzf py.tgz; \
+  cd "Python-${PY314_VER}"; \
+  ./configure --prefix=/usr/local/python-3.14; \
+  make -j"$(nproc)"; \
+  make install; \
+  /usr/local/python-3.14/bin/python3.14 --version; \
+  rm -rf /tmp/python
+
+# ----------------------------
+# JDK 25.0.1 (verified URL + sha256)
 # ----------------------------
 RUN set -eux; \
   mkdir -p /tmp/java && cd /tmp/java; \
-  curl -fL "${JDK_MS_URL}" -o jdk.tgz; \
+  curl -fL "${JDK25_URL}" -o jdk.tgz; \
+  echo "${JDK25_SHA256}  jdk.tgz" | sha256sum -c -; \
   tar -xzf jdk.tgz; \
-  # archive contains a single top-level dir like jdk-25.0.1+.../
-  mv jdk-* /usr/local/jdk-25; \
+  shopt -s nullglob; \
+  for d in jdk-*; do mv "$d" /usr/local/jdk-25; break; done; \
   /usr/local/jdk-25/bin/java -version; \
   rm -rf /tmp/java
 ENV JAVA_HOME=/usr/local/jdk-25
-ENV PATH=/usr/local/jdk-25/bin:${PATH}
 
 # ----------------------------
 # Go 1.25.4
@@ -189,45 +178,40 @@ RUN set -eux; \
   mkdir -p /tmp/go && cd /tmp/go; \
   curl -fL "https://go.dev/dl/go${GO_VER}.linux-amd64.tar.gz" -o go.tgz; \
   tar -xzf go.tgz; \
-  mv go /usr/local/go-${GO_VER}; \
-  ln -sf /usr/local/go-${GO_VER}/bin/go /usr/local/bin/go-${GO_VER}; \
-  /usr/local/go-${GO_VER}/bin/go version; \
+  mv go "/usr/local/go-${GO_VER}"; \
+  "/usr/local/go-${GO_VER}/bin/go" version; \
   rm -rf /tmp/go
 
 # ----------------------------
-# Rust 1.89.0 (official tarball)
+# Rust 1.89.0 (rustup pinned)
 # ----------------------------
+ENV RUSTUP_HOME=/usr/local/rustup
+ENV CARGO_HOME=/usr/local/cargo
 RUN set -eux; \
-  mkdir -p /tmp/rust && cd /tmp/rust; \
-  curl -fL "https://static.rust-lang.org/dist/rust-${RUST_VER}-x86_64-unknown-linux-gnu.tar.gz" -o rust.tgz; \
-  tar -xzf rust.tgz; \
-  cd "rust-${RUST_VER}-x86_64-unknown-linux-gnu"; \
-  ./install.sh --prefix=/usr/local/rust-${RUST_VER}; \
-  ln -sf /usr/local/rust-${RUST_VER}/bin/rustc /usr/local/bin/rustc-${RUST_VER}; \
-  /usr/local/rust-${RUST_VER}/bin/rustc --version; \
-  rm -rf /tmp/rust
+  curl -sSf https://sh.rustup.rs | sh -s -- -y --profile minimal --default-toolchain "${RUST_VER}"; \
+  ln -s "${RUSTUP_HOME}/toolchains/${RUST_VER}-x86_64-unknown-linux-gnu" "/usr/local/rust-${RUST_VER}"; \
+  "/usr/local/rust-${RUST_VER}/bin/rustc" --version
 
 # ----------------------------
-# Ruby 2.7.8 (linked with OpenSSL 1.1) + Ruby 3.4.7 (system OpenSSL 3)
+# Ruby 2.7.8 (OpenSSL 1.1) + Ruby 3.4.7 (OpenSSL 3)
 # ----------------------------
 RUN set -eux; \
   mkdir -p /tmp/ruby && cd /tmp/ruby; \
   curl -fL "https://cache.ruby-lang.org/pub/ruby/2.7/ruby-${RUBY27_VER}.tar.gz" -o r27.tgz; \
   tar -xzf r27.tgz; \
   cd "ruby-${RUBY27_VER}"; \
-  ./configure --prefix=/usr/local/ruby-2.7 --with-openssl-dir=/opt/openssl-1.1; \
+  CPPFLAGS="-I/opt/openssl-1.1/include" \
+  LDFLAGS="-L/opt/openssl-1.1/lib -Wl,-rpath,/opt/openssl-1.1/lib" \
+    ./configure --prefix=/usr/local/ruby-2.7 --disable-install-doc --with-openssl-dir=/opt/openssl-1.1; \
   make -j"$(nproc)"; \
   make install; \
   /usr/local/ruby-2.7/bin/ruby -ropenssl -e 'puts OpenSSL::OPENSSL_VERSION'; \
-  /usr/local/ruby-2.7/bin/gem install --no-document bundler -v "${BUNDLER27_VER}"; \
-  rm -rf /tmp/ruby
-
-RUN set -eux; \
-  mkdir -p /tmp/ruby && cd /tmp/ruby; \
+  \
+  cd /tmp/ruby; \
   curl -fL "https://cache.ruby-lang.org/pub/ruby/3.4/ruby-${RUBY34_VER}.tar.gz" -o r34.tgz; \
   tar -xzf r34.tgz; \
   cd "ruby-${RUBY34_VER}"; \
-  ./configure --prefix=/usr/local/ruby-3.4; \
+  ./configure --prefix=/usr/local/ruby-3.4 --disable-install-doc; \
   make -j"$(nproc)"; \
   make install; \
   /usr/local/ruby-3.4/bin/ruby -ropenssl -e 'puts OpenSSL::OPENSSL_VERSION'; \
@@ -241,72 +225,94 @@ RUN set -eux; \
   ln -sf /usr/local/ruby-3.4/bin/gem  /usr/local/bin/gem3.4
 
 # ----------------------------
-# Node.js 22.21.1 + TS 5.7.3, Node.js 24.12.0 + TS 5.9.3
-# ----------------------------
-RUN set -eux; \
-  mkdir -p /tmp/node; cd /tmp/node; \
-  curl -fL "https://nodejs.org/dist/v${NODE22_VER}/node-v${NODE22_VER}-linux-x64.tar.xz" -o node22.txz; \
-  tar -xJf node22.txz; \
-  mv "node-v${NODE22_VER}-linux-x64" /usr/local/node-22; \
-  ln -sf /usr/local/node-22/bin/node /usr/local/bin/node22; \
-  ln -sf /usr/local/node-22/bin/npm  /usr/local/bin/npm22; \
-  /usr/local/node-22/bin/node --version; \
-  /usr/local/node-22/bin/npm install -g --prefix /usr/local/node-22 "typescript@${TS22_VER}"; \
-  /usr/local/node-22/bin/tsc --version; \
-  \
-  curl -fL "https://nodejs.org/dist/v${NODE24_VER}/node-v${NODE24_VER}-linux-x64.tar.xz" -o node24.txz; \
-  tar -xJf node24.txz; \
-  mv "node-v${NODE24_VER}-linux-x64" /usr/local/node-24; \
-  ln -sf /usr/local/node-24/bin/node /usr/local/bin/node24; \
-  ln -sf /usr/local/node-24/bin/npm  /usr/local/bin/npm24; \
-  /usr/local/node-24/bin/node --version; \
-  /usr/local/node-24/bin/npm install -g --prefix /usr/local/node-24 "typescript@${TS24_VER}"; \
-  /usr/local/node-24/bin/tsc --version; \
-  rm -rf /tmp/node
-
-# ----------------------------
-# Kotlin 2.3.0 (compiler zip)
+# Kotlin 2.3.0
 # ----------------------------
 RUN set -eux; \
   mkdir -p /tmp/kotlin && cd /tmp/kotlin; \
   curl -fL "https://github.com/JetBrains/kotlin/releases/download/v${KOTLIN_VER}/kotlin-compiler-${KOTLIN_VER}.zip" -o kotlin.zip; \
   unzip -q kotlin.zip; \
-  mv kotlinc /usr/local/kotlin-${KOTLIN_VER}; \
-  ln -sf /usr/local/kotlin-${KOTLIN_VER}/bin/kotlin /usr/local/bin/kotlin-${KOTLIN_VER}; \
-  JAVA_HOME=/usr/local/jdk-25 /usr/local/kotlin-${KOTLIN_VER}/bin/kotlin -version || true; \
+  mv kotlinc "/usr/local/kotlin-${KOTLIN_VER}"; \
   rm -rf /tmp/kotlin
+ENV KOTLIN_HOME=/usr/local/kotlin-2.3.0
 
 # ----------------------------
-# PHP 8.2.30 and PHP 8.5.1 (build from source, pinned)
+# PHP 8.2.30 and 8.5.1 (minimal CLI builds)
 # ----------------------------
 RUN set -eux; \
-  mkdir -p /tmp/php && cd /tmp/php; \
-  curl -fL "https://www.php.net/distributions/php-${PHP82_VER}.tar.xz" -o php82.txz; \
-  tar -xJf php82.txz; \
-  cd "php-${PHP82_VER}"; \
-  ./configure --prefix="/usr/local/php-8.2" \
-    --enable-cli --disable-cgi --enable-mbstring --with-openssl --with-zlib --with-curl --with-zip \
-    --with-readline --with-sodium; \
-  make -j"$(nproc)"; \
-  make install; \
-  ln -sf /usr/local/php-8.2/bin/php /usr/local/bin/php82; \
-  /usr/local/php-8.2/bin/php -v | head -n1; \
-  \
-  cd /tmp/php; \
-  curl -fL "https://www.php.net/distributions/php-${PHP85_VER}.tar.xz" -o php85.txz; \
-  tar -xJf php85.txz; \
-  cd "php-${PHP85_VER}"; \
-  ./configure --prefix="/usr/local/php-8.5" \
-    --enable-cli --disable-cgi --enable-mbstring --with-openssl --with-zlib --with-curl --with-zip \
-    --with-readline --with-sodium; \
-  make -j"$(nproc)"; \
-  make install; \
-  ln -sf /usr/local/php-8.5/bin/php /usr/local/bin/php85; \
-  /usr/local/php-8.5/bin/php -v | head -n1; \
-  rm -rf /tmp/php
+  build_php() { \
+    local ver="$1"; local prefix="$2"; \
+    mkdir -p /tmp/php && cd /tmp/php; \
+    curl -fL "https://www.php.net/distributions/php-${ver}.tar.gz" -o php.tgz; \
+    tar -xzf php.tgz; \
+    cd "php-${ver}"; \
+    ./configure --prefix="${prefix}" \
+      --enable-cli \
+      --with-openssl \
+      --with-zlib \
+      --with-curl \
+      --enable-mbstring \
+      --with-zip; \
+    make -j"$(nproc)"; \
+    make install; \
+    "${prefix}/bin/php" --version | head -n1; \
+    rm -rf /tmp/php; \
+  }; \
+  build_php "${PHP82_VER}" /usr/local/php-8.2; \
+  build_php "${PHP85_VER}" /usr/local/php-8.5
 
 # ----------------------------
-# Smoke-check script (NO heredoc bugs)
+# Node 22.21.1 + TS 5.7.3 AND Node 24.12.0 + TS 5.9.3
+# FIX: run npm via node npm-cli.js (no PATH dependency) and patch shebangs
+# ----------------------------
+RUN set -eux; \
+  mkdir -p /tmp/node && cd /tmp/node; \
+  \
+  # ---- Node 22 + TS 5.7.3 ----
+  curl -fL "https://nodejs.org/dist/v${NODE22_VER}/node-v${NODE22_VER}-linux-x64.tar.xz" -o node22.txz; \
+  tar -xJf node22.txz; \
+  mv "node-v${NODE22_VER}-linux-x64" /usr/local/node-22; \
+  /usr/local/node-22/bin/node --version; \
+  \
+  # Run npm without relying on /usr/bin/env node
+  /usr/local/node-22/bin/node /usr/local/node-22/lib/node_modules/npm/bin/npm-cli.js \
+    install -g --prefix /usr/local/node-22 "typescript@${TS22_VER}"; \
+  \
+  # Patch wrappers that use "#!/usr/bin/env node" so they always run with this node
+  for f in npm npx corepack tsc tsserver; do \
+    if [ -e "/usr/local/node-22/bin/${f}" ]; then \
+      tgt="$(readlink -f "/usr/local/node-22/bin/${f}" || true)"; \
+      [ -n "${tgt}" ] || tgt="/usr/local/node-22/bin/${f}"; \
+      sed -i '1 s|^#!/usr/bin/env node|#!/usr/local/node-22/bin/node|' "${tgt}" || true; \
+    fi; \
+  done; \
+  /usr/local/node-22/bin/tsc --version; \
+  ln -sf /usr/local/node-22/bin/node /usr/local/bin/node22; \
+  ln -sf /usr/local/node-22/bin/npm  /usr/local/bin/npm22; \
+  \
+  # ---- Node 24 + TS 5.9.3 ----
+  curl -fL "https://nodejs.org/dist/v${NODE24_VER}/node-v${NODE24_VER}-linux-x64.tar.xz" -o node24.txz; \
+  tar -xJf node24.txz; \
+  mv "node-v${NODE24_VER}-linux-x64" /usr/local/node-24; \
+  /usr/local/node-24/bin/node --version; \
+  \
+  /usr/local/node-24/bin/node /usr/local/node-24/lib/node_modules/npm/bin/npm-cli.js \
+    install -g --prefix /usr/local/node-24 "typescript@${TS24_VER}"; \
+  \
+  for f in npm npx corepack tsc tsserver; do \
+    if [ -e "/usr/local/node-24/bin/${f}" ]; then \
+      tgt="$(readlink -f "/usr/local/node-24/bin/${f}" || true)"; \
+      [ -n "${tgt}" ] || tgt="/usr/local/node-24/bin/${f}"; \
+      sed -i '1 s|^#!/usr/bin/env node|#!/usr/local/node-24/bin/node|' "${tgt}" || true; \
+    fi; \
+  done; \
+  /usr/local/node-24/bin/tsc --version; \
+  ln -sf /usr/local/node-24/bin/node /usr/local/bin/node24; \
+  ln -sf /usr/local/node-24/bin/npm  /usr/local/bin/npm24; \
+  \
+  rm -rf /tmp/node
+
+# ----------------------------
+# Version check script (fails build if missing)
 # ----------------------------
 RUN set -eux; \
   cat > /usr/local/bin/check-versions.sh <<'EOF'
@@ -314,46 +320,50 @@ RUN set -eux; \
 set -euo pipefail
 
 echo "=== GCC ==="
-echo -n "GCC 14: "; /usr/local/gcc-14/bin/gcc --version | head -n1
-echo -n "GCC 15: "; /usr/local/gcc-15/bin/gcc --version | head -n1
+ /usr/local/gcc-14/bin/gcc --version | head -n1
+ /usr/local/gcc-15/bin/gcc --version | head -n1
 
 echo "=== Clang ==="
-echo -n "Clang 19: "; /usr/local/clang-19/bin/clang --version | head -n1
-echo -n "Clang 20: "; /usr/local/clang-20/bin/clang --version | head -n1
+ /usr/local/clang-19/bin/clang --version | head -n1
+ /usr/local/clang-20/bin/clang --version | head -n1
 
 echo "=== Python ==="
-/usr/local/python-2.7/bin/python2.7 -c "import ssl; print('Python 2.7 SSL:', ssl.OPENSSL_VERSION)"
-/usr/local/python-3.11/bin/python3.11 --version
-/usr/local/python-3.14/bin/python3.14 --version
+ /usr/local/python-2.7/bin/python2.7 --version
+ /usr/local/python-2.7/bin/python2.7 -c "import ssl; print('2.7 ssl:', ssl.OPENSSL_VERSION)"
+ /usr/local/python-3.11/bin/python3.11 --version
+ /usr/local/python-3.14/bin/python3.14 --version
 
 echo "=== Java ==="
-/usr/local/jdk-25/bin/java -version
+ /usr/local/jdk-25/bin/java -version
 
 echo "=== Go ==="
-/usr/local/go-1.25.4/bin/go version
+ /usr/local/go-1.25.4/bin/go version
 
 echo "=== Rust ==="
-/usr/local/rust-1.89.0/bin/rustc --version
+ /usr/local/rust-1.89.0/bin/rustc --version
 
 echo "=== Ruby ==="
-/usr/local/ruby-2.7/bin/ruby -ropenssl -e 'puts "Ruby 2.7 OpenSSL: #{OpenSSL::OPENSSL_VERSION}"'
-/usr/local/ruby-3.4/bin/ruby -ropenssl -e 'puts "Ruby 3.4 OpenSSL: #{OpenSSL::OPENSSL_VERSION}"'
+ /usr/local/ruby-2.7/bin/ruby -v
+ /usr/local/ruby-3.4/bin/ruby -v
 
 echo "=== Kotlin ==="
-JAVA_HOME=/usr/local/jdk-25 /usr/local/kotlin-2.3.0/bin/kotlin -version || true
+ JAVA_HOME=/usr/local/jdk-25 /usr/local/kotlin-2.3.0/bin/kotlin -version
 
 echo "=== PHP ==="
-/usr/local/php-8.2/bin/php -v | head -n1
-/usr/local/php-8.5/bin/php -v | head -n1
+ /usr/local/php-8.2/bin/php --version | head -n1
+ /usr/local/php-8.5/bin/php --version | head -n1
 
-echo "=== Node/TypeScript ==="
-/usr/local/node-22/bin/node --version
-/usr/local/node-22/bin/tsc --version
-/usr/local/node-24/bin/node --version
-/usr/local/node-24/bin/tsc --version
+echo "=== Node/TS ==="
+ /usr/local/node-22/bin/node --version
+ /usr/local/node-22/bin/tsc --version
+ /usr/local/node-24/bin/node --version
+ /usr/local/node-24/bin/tsc --version
 
 echo "OK"
 EOF
-RUN chmod +x /usr/local/bin/check-versions.sh
+  chmod +x /usr/local/bin/check-versions.sh
+
+# Run checks at build time so CI fails fast if anything is broken
+RUN /usr/local/bin/check-versions.sh
 
 CMD ["/usr/local/bin/check-versions.sh"]
