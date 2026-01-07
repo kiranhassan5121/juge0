@@ -347,7 +347,7 @@ ENV PATH="/usr/local/node-24/bin:/usr/local/node-22/bin:${PATH}"
 # =====================================
 # VERSION VERIFICATION SCRIPT
 # =====================================
-RUN cat > /usr/local/bin/check-versions.sh << 'SCRIPT_EOF'
+RUN <<'SCRIPT_EOF' cat > /usr/local/bin/check-versions.sh
 #!/usr/bin/env bash
 set -euo pipefail
 
