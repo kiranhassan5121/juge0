@@ -11,6 +11,7 @@
 
 ## Latest Compiler Versions
 
+
 | Language | Version | Language ID | Release Date |
 |----------|---------|-------------|--------------|
 | **GCC (C)** | 14.2.0 | 50 | Aug 2024 |
